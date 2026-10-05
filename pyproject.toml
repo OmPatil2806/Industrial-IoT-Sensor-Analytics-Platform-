@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iiot-analytics"
+version = "0.1.0"
+description = "Industrial IoT sensor analytics: medallion data pipeline + ML for predictive maintenance"
+authors = [{ name = "Om Patil" }]
+readme = "README.md"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["src"]

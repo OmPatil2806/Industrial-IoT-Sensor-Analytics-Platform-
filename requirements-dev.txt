@@ -1,0 +1,4 @@
+# Development tools (testing, linting). Includes all runtime dependencies.
+-r requirements.txt
+pytest>=8.0        # testing
+ruff>=0.4          # linting + formatting
