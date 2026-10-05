@@ -1,0 +1,77 @@
+# ===================================================================
+# Industrial IoT Sensor Analytics Platform - central configuration
+# ===================================================================
+# Every tunable value lives here, so nothing is hard-coded in the code.
+# Paths are relative to the project root.
+
+# -------------------------------------------------------------------
+# Data paths for each layer of the medallion architecture
+# -------------------------------------------------------------------
+paths:
+  raw: data/raw
+  bronze: data/bronze
+  silver: data/silver
+  gold: data/gold
+  models: models
+  reports: reports
+  logs: logs
+
+# -------------------------------------------------------------------
+# Source dataset: Microsoft Azure Predictive Maintenance (Kaggle)
+# -------------------------------------------------------------------
+dataset:
+  kaggle_slug: arnabbiswas1/microsoft-azure-predictive-maintenance
+  files:
+    telemetry: PdM_telemetry.csv
+    errors: PdM_errors.csv
+    maintenance: PdM_maint.csv
+    failures: PdM_failures.csv
+    machines: PdM_machines.csv
+
+# -------------------------------------------------------------------
+# Sensor validation limits (used by the Silver layer)
+# Readings outside [min, max] are treated as sensor glitches -> null.
+# The source dataset does not state units; limits are set well
+# outside the normal operating range observed in the data.
+# -------------------------------------------------------------------
+sensors:
+  volt:      { min: 0.0, max: 300.0 }
+  rotate:    { min: 0.0, max: 1000.0 }
+  pressure:  { min: 0.0, max: 250.0 }
+  vibration: { min: 0.0, max: 100.0 }
+
+# -------------------------------------------------------------------
+# Data-quality injection (Phase 2)
+# The source data is very clean, so these problems are added to a
+# COPY of the raw telemetry to give the Silver layer real work.
+# Rates are fractions of rows/values (0.01 = 1%).
+# -------------------------------------------------------------------
+data_quality_injection:
+  seed: 42
+  missing_rate: 0.01      # values set to empty
+  spike_rate: 0.002       # values replaced by impossible readings
+  duplicate_rate: 0.005   # rows duplicated (e.g. gateway retries)
+
+# -------------------------------------------------------------------
+# Business assumptions (used by the business-insights layer)
+# Illustrative values - replace with real plant figures if available.
+# -------------------------------------------------------------------
+business:
+  currency: INR
+  downtime_cost_per_hour: 50000          # lost production per machine-hour
+  repair_hours:                          # downtime per unplanned failure
+    unplanned_failure: 8
+    planned_maintenance: 2
+  component_repair_cost:                 # parts + labour per replacement
+    comp1: 40000
+    comp2: 60000
+    comp3: 35000
+    comp4: 75000
+
+# -------------------------------------------------------------------
+# Machine-learning settings
+# -------------------------------------------------------------------
+ml:
+  prediction_horizon_hours: 24   # predict "will it fail within N hours?"
+  train_end_date: "2015-10-01"   # time-based split: train before, test after
+  random_seed: 42
