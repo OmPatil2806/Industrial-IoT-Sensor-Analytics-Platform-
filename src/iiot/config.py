@@ -76,6 +76,12 @@ class ML:
 
 
 @dataclass(frozen=True)
+class Logging:
+    level: str
+    file_name: str
+
+
+@dataclass(frozen=True)
 class Settings:
     paths: Paths
     dataset: Dataset
@@ -83,6 +89,7 @@ class Settings:
     data_quality_injection: DataQualityInjection
     business: Business
     ml: ML
+    logging: Logging
 
 
 def _validate(settings: Settings) -> None:
@@ -97,6 +104,16 @@ def _validate(settings: Settings) -> None:
             raise ValueError(f"data_quality_injection.{name} must be between 0 and 1")
     if settings.ml.prediction_horizon_hours <= 0:
         raise ValueError("ml.prediction_horizon_hours must be positive")
+    if settings.logging.level.upper() not in (
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL",
+    ):
+        raise ValueError(
+            f"logging.level '{settings.logging.level}' is not a valid log level"
+        )
 
 
 def load_settings(path: Path | str | None = None) -> Settings:
@@ -117,6 +134,7 @@ def load_settings(path: Path | str | None = None) -> Settings:
             train_end_date=date.fromisoformat(str(ml["train_end_date"])),
             random_seed=ml["random_seed"],
         ),
+        logging=Logging(**raw["logging"]),
     )
     _validate(settings)
     return settings

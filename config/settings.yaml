@@ -75,3 +75,10 @@ ml:
   prediction_horizon_hours: 24   # predict "will it fail within N hours?"
   train_end_date: "2015-10-01"   # time-based split: train before, test after
   random_seed: 42
+
+# -------------------------------------------------------------------
+# Logging
+# -------------------------------------------------------------------
+logging:
+  level: INFO              # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  file_name: pipeline.log  # written inside paths.logs
