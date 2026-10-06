@@ -12,3 +12,30 @@ requires-python = ">=3.11"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# ---------------------------------------------------------------
+# Code quality: ruff (linter + formatter)
+# Run: ruff check .   and   ruff format .
+# ---------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes (unused imports, undefined names)
+    "I",   # import sorting
+    "B",   # bugbear (common bug patterns)
+    "UP",  # pyupgrade (modern Python syntax)
+]
+
+# ---------------------------------------------------------------
+# Testing: pytest
+# Run: pytest
+# ---------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

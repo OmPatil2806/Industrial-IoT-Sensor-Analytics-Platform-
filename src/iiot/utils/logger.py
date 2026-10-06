@@ -22,12 +22,15 @@ LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 MAX_LOG_BYTES = 5 * 1024 * 1024
 BACKUP_COUNT = 3
+# Marks handlers added by this module, so handlers attached by other tools
+# (e.g. pytest's log capture) are not mistaken for our own configuration.
+_HANDLER_TAG = "_iiot_handler"
 
 
 def _configure_root_logger() -> logging.Logger:
     """Attach console and file handlers to the 'iiot' logger exactly once."""
     root = logging.getLogger(ROOT_LOGGER_NAME)
-    if root.handlers:
+    if any(getattr(h, _HANDLER_TAG, False) for h in root.handlers):
         return root
 
     settings = get_settings()
@@ -48,6 +51,9 @@ def _configure_root_logger() -> logging.Logger:
     )
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
+
+    for handler in (console, file_handler):
+        setattr(handler, _HANDLER_TAG, True)
     return root
 
 

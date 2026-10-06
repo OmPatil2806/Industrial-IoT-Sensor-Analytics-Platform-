@@ -95,9 +95,7 @@ class Settings:
 def _validate(settings: Settings) -> None:
     for name, limit in settings.sensors.items():
         if limit.min >= limit.max:
-            raise ValueError(
-                f"Sensor '{name}': min ({limit.min}) must be below max ({limit.max})"
-            )
+            raise ValueError(f"Sensor '{name}': min ({limit.min}) must be below max ({limit.max})")
     dq = settings.data_quality_injection
     for name in ("missing_rate", "spike_rate", "duplicate_rate"):
         if not 0.0 <= getattr(dq, name) <= 1.0:
@@ -111,9 +109,7 @@ def _validate(settings: Settings) -> None:
         "ERROR",
         "CRITICAL",
     ):
-        raise ValueError(
-            f"logging.level '{settings.logging.level}' is not a valid log level"
-        )
+        raise ValueError(f"logging.level '{settings.logging.level}' is not a valid log level")
 
 
 def load_settings(path: Path | str | None = None) -> Settings:
