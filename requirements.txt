@@ -4,3 +4,4 @@ pandas>=2.2        # data manipulation (all layers)
 pyarrow>=15.0      # Parquet file format (bronze/silver/gold storage)
 duckdb>=1.0        # SQL engine for the data model
 pyyaml>=6.0        # reads config/settings.yaml
+kaggle>=1.7        # downloads the Azure Predictive Maintenance dataset

@@ -17,6 +17,7 @@ mlruns/
 .env
 .env.*
 kaggle.json
+access_token
 
 # ---- Python ----
 __pycache__/
