@@ -2,7 +2,7 @@
 
 An end-to-end **Data Engineering + Machine Learning** platform that turns raw industrial sensor data into early failure warnings and business decisions, moving a plant from **reactive** to **predictive maintenance**.
 
-> **Status:** 🚧 In development. See the [Roadmap](#-roadmap) for progress.
+> **Status:** 🚧 In development. Phase 1 (project setup) complete. See the **Roadmap** section below for progress.
 
 ---
 
@@ -164,51 +164,108 @@ The project follows a **Medallion Architecture** (Bronze → Silver → Gold), f
 
 ---
 
-## 📁 Planned Project Structure
+## 📁 Project Structure
 
 ```
 Industrial-IoT-Sensor-Analytics-Platform-/
 ├── README.md
-├── config/              # paths, sensor limits, cost assumptions
-├── data/                # not committed to Git
+├── pyproject.toml           # package definition, ruff & pytest settings
+├── requirements.txt         # runtime dependencies
+├── requirements-dev.txt     # + testing / linting tools
+├── config/
+│   └── settings.yaml        # paths, sensor limits, cost assumptions, ML & logging settings
+├── data/                    # not committed to Git
 │   ├── raw/
 │   ├── bronze/
 │   ├── silver/
 │   └── gold/
 ├── src/iiot/
-│   ├── ingestion/       # dataset download, data-quality injection, reference data
-│   ├── bronze/
-│   ├── silver/
-│   ├── gold/
-│   ├── data_model/
-│   └── ml/
-├── dashboard/
-├── notebooks/           # exploratory data analysis
-├── tests/
+│   ├── config.py            # loads & validates settings.yaml
+│   ├── utils/logger.py      # console + file logging
+│   ├── ingestion/           # (Phase 2) download, data-quality injection, reference data
+│   ├── bronze/              # (Phase 3)
+│   ├── silver/              # (Phase 4)
+│   ├── gold/                # (Phase 5)
+│   ├── data_model/          # (Phase 6)
+│   └── ml/                  # (Phase 7)
+├── dashboard/               # (Phase 8) Streamlit app
+├── notebooks/               # exploratory data analysis
+├── reports/                 # (Phase 9) business insights
+├── models/                  # trained models (not committed)
+├── tests/                   # pytest test suite
 └── docs/
+    └── architecture.md      # detailed architecture & design decisions
 ```
+
+📖 See **[docs/architecture.md](docs/architecture.md)** for the detailed design of each layer and the reasoning behind each technology choice.
 
 ---
 
 ## 🗺️ Roadmap
 
-- [x] Project README & architecture
-- [ ] Project setup (structure, dependencies, configuration)
-- [ ] Data acquisition (download, data-quality injection, reference data)
-- [ ] Bronze layer
-- [ ] Silver layer + data-quality checks
-- [ ] Gold layer (aggregates, features, KPIs)
-- [ ] Data model (star schema)
-- [ ] Machine learning (anomaly detection, failure prediction, RUL)
-- [ ] Dashboard
-- [ ] Business insights report
-- [ ] Tests & documentation
+- [x] **Phase 1: Project setup:** structure, dependencies, configuration, logging, tests, docs
+- [ ] **Phase 2: Sensor data acquisition:** download, data-quality injection, reference data
+- [ ] **Phase 3: Bronze layer:** raw → Parquet with ingestion metadata
+- [ ] **Phase 4: Silver layer:** cleaning, validation, data-quality report
+- [ ] **Phase 5: Gold layer:** aggregates, features, labels, KPIs
+- [ ] **Phase 6: Data model:** star schema (facts & dimensions)
+- [ ] **Phase 7: Machine learning:** anomaly detection, failure prediction, RUL
+- [ ] **Phase 8: Dashboard:** Streamlit multi-page app
+- [ ] **Phase 9: Business insights:** cost, downtime and maintenance recommendations
+- [ ] **Phase 10: Testing, CI & final documentation**
 
 ---
 
 ## 🚀 Getting Started
 
-Setup and run instructions will be added as the project is built.
+### Prerequisites
+- **Python 3.11+**: [python.org/downloads](https://www.python.org/downloads/) (tick *"Add Python to PATH"* on Windows)
+- **Git**: [git-scm.com](https://git-scm.com/)
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/OmPatil2806/Industrial-IoT-Sensor-Analytics-Platform-.git
+cd Industrial-IoT-Sensor-Analytics-Platform-
+```
+
+### 2. Create and activate a virtual environment
+
+**Windows (PowerShell)**
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+> If you see *"running scripts is disabled on this system"*, run this once and try again:
+> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+
+**macOS / Linux**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements-dev.txt
+pip install -e .
+```
+
+### 4. Verify the setup
+```bash
+python -c "from iiot.config import get_settings; print(get_settings().ml)"
+pytest
+ruff check .
+```
+All tests should pass and ruff should report `All checks passed!`.
+
+### 5. (VS Code) Select the interpreter
+`Ctrl+Shift+P` → **Python: Select Interpreter** → choose the `.venv` interpreter.
+
+### Configuration
+All settings live in [`config/settings.yaml`](config/settings.yaml): data paths, sensor validation limits, data-quality injection rates, business cost assumptions, ML settings and log level. To use a different file, set the `IIOT_CONFIG` environment variable.
+
+> Pipeline run commands will be added here as each phase is completed.
 
 ---
 
