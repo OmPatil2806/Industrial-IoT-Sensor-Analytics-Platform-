@@ -52,23 +52,32 @@ def build_machine_location(machine_ids: list[int], layout: PlantLayout) -> pd.Da
 
 
 def build_component_costs(business: Business) -> pd.DataFrame:
-    """Cost of each component failing unexpectedly vs. being replaced on schedule."""
-    unplanned_h = business.repair_hours["unplanned_failure"]
-    planned_h = business.repair_hours["planned_maintenance"]
-    df = pd.DataFrame(
-        {
-            "component": list(business.component_repair_cost),
-            "repair_cost": list(business.component_repair_cost.values()),
-        }
-    )
-    df["unplanned_downtime_hours"] = unplanned_h
-    df["planned_downtime_hours"] = planned_h
-    df["downtime_cost_per_hour"] = business.downtime_cost_per_hour
-    df["unplanned_failure_cost"] = df["repair_cost"] + unplanned_h * df["downtime_cost_per_hour"]
-    df["planned_maintenance_cost"] = df["repair_cost"] + planned_h * df["downtime_cost_per_hour"]
-    df["saving_if_prevented"] = df["unplanned_failure_cost"] - df["planned_maintenance_cost"]
-    df["currency"] = business.currency
-    return df
+    """Cost of each component failing unexpectedly vs. being replaced on schedule.
+
+    unplanned_failure_cost   = repair_cost x emergency premium + unplanned downtime x hourly cost
+    planned_maintenance_cost = repair_cost + planned downtime x hourly cost
+    """
+    rate = business.downtime_cost_per_hour
+    rows = []
+    for component, c in business.components.items():
+        unplanned_repair = c.repair_cost * business.emergency_repair_premium
+        unplanned_total = unplanned_repair + c.unplanned_downtime_hours * rate
+        planned_total = c.repair_cost + c.planned_downtime_hours * rate
+        rows.append(
+            {
+                "component": component,
+                "repair_cost": c.repair_cost,
+                "unplanned_repair_cost": unplanned_repair,
+                "unplanned_downtime_hours": c.unplanned_downtime_hours,
+                "planned_downtime_hours": c.planned_downtime_hours,
+                "downtime_cost_per_hour": rate,
+                "unplanned_failure_cost": unplanned_total,
+                "planned_maintenance_cost": planned_total,
+                "saving_if_prevented": unplanned_total - planned_total,
+                "currency": business.currency,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def run(raw_dir: Path | None = None) -> dict[str, pd.DataFrame]:

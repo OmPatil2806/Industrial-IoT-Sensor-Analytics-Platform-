@@ -57,20 +57,35 @@ def test_uneven_split_differs_by_at_most_one():
 
 
 def test_component_costs():
-    costs = build_component_costs(SETTINGS.business).set_index("component")
     business = SETTINGS.business
-    assert list(costs.index) == list(business.component_repair_cost)
+    costs = build_component_costs(business).set_index("component")
+    assert list(costs.index) == list(business.components)
     rate = business.downtime_cost_per_hour
-    for comp, repair in business.component_repair_cost.items():
+    for comp, c in business.components.items():
         row = costs.loc[comp]
-        assert row["unplanned_failure_cost"] == (
-            repair + business.repair_hours["unplanned_failure"] * rate
+        expected_unplanned = (
+            c.repair_cost * business.emergency_repair_premium + c.unplanned_downtime_hours * rate
         )
-        assert row["planned_maintenance_cost"] == (
-            repair + business.repair_hours["planned_maintenance"] * rate
-        )
-        assert row["saving_if_prevented"] > 0
+        expected_planned = c.repair_cost + c.planned_downtime_hours * rate
+        assert row["unplanned_failure_cost"] == pytest.approx(expected_unplanned)
+        assert row["planned_maintenance_cost"] == pytest.approx(expected_planned)
+        assert row["saving_if_prevented"] == pytest.approx(expected_unplanned - expected_planned)
     assert (costs["currency"] == business.currency).all()
+
+
+def test_savings_differ_between_components():
+    """Per-component downtime and the emergency premium make some failures costlier."""
+    savings = build_component_costs(SETTINGS.business)["saving_if_prevented"]
+    assert savings.nunique() == len(savings)
+    assert (savings > 0).all()
+
+
+def test_emergency_premium_raises_unplanned_cost():
+    base = replace(SETTINGS.business, emergency_repair_premium=1.0)
+    premium = replace(SETTINGS.business, emergency_repair_premium=2.0)
+    low = build_component_costs(base)["unplanned_failure_cost"]
+    high = build_component_costs(premium)["unplanned_failure_cost"]
+    assert (high > low).all()
 
 
 def test_run_writes_both_files(tmp_path):

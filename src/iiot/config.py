@@ -64,11 +64,18 @@ class DataQualityInjection:
 
 
 @dataclass(frozen=True)
+class ComponentCost:
+    repair_cost: float
+    unplanned_downtime_hours: float
+    planned_downtime_hours: float
+
+
+@dataclass(frozen=True)
 class Business:
     currency: str
     downtime_cost_per_hour: float
-    repair_hours: dict[str, float]
-    component_repair_cost: dict[str, float]
+    emergency_repair_premium: float
+    components: dict[str, ComponentCost]
 
 
 @dataclass(frozen=True)
@@ -126,6 +133,19 @@ def _validate(settings: Settings) -> None:
         raise ValueError("data_quality_injection.stuck_episodes must not be negative")
     if not 2 <= dq.stuck_min_hours <= dq.stuck_max_hours:
         raise ValueError("data_quality_injection: need 2 <= stuck_min_hours <= stuck_max_hours")
+    business = settings.business
+    if business.downtime_cost_per_hour < 0:
+        raise ValueError("business.downtime_cost_per_hour must not be negative")
+    if business.emergency_repair_premium < 1:
+        raise ValueError("business.emergency_repair_premium must be at least 1")
+    for name, c in business.components.items():
+        if c.repair_cost < 0:
+            raise ValueError(f"business.components.{name}: repair_cost must not be negative")
+        if not 0 <= c.planned_downtime_hours <= c.unplanned_downtime_hours:
+            raise ValueError(
+                f"business.components.{name}: need "
+                "0 <= planned_downtime_hours <= unplanned_downtime_hours"
+            )
     plant_ids = [p.plant_id for p in settings.plant_layout.plants]
     if not plant_ids:
         raise ValueError("plant_layout.plants must contain at least one plant")
@@ -157,7 +177,10 @@ def load_settings(path: Path | str | None = None) -> Settings:
         dataset=Dataset(**raw["dataset"]),
         sensors={k: SensorLimit(**v) for k, v in raw["sensors"].items()},
         data_quality_injection=DataQualityInjection(**raw["data_quality_injection"]),
-        business=Business(**raw["business"]),
+        business=Business(
+            **{k: v for k, v in raw["business"].items() if k != "components"},
+            components={k: ComponentCost(**v) for k, v in raw["business"]["components"].items()},
+        ),
         plant_layout=PlantLayout(
             seed=raw["plant_layout"]["seed"],
             plants=tuple(Plant(**p) for p in raw["plant_layout"]["plants"]),

@@ -53,6 +53,36 @@ def test_iiot_config_env_var_overrides_path(write_config, monkeypatch):
         ({"data_quality_injection": {"stuck_min_hours": 20}}, "stuck_min_hours"),
         ({"ml": {"prediction_horizon_hours": 0}}, "prediction_horizon_hours"),
         ({"logging": {"level": "LOUD"}}, "log level"),
+        ({"business": {"emergency_repair_premium": 0.5}}, "emergency_repair_premium"),
+        ({"business": {"downtime_cost_per_hour": -1}}, "downtime_cost_per_hour"),
+        (
+            {
+                "business": {
+                    "components": {
+                        "comp1": {
+                            "repair_cost": 1,
+                            "unplanned_downtime_hours": 2,
+                            "planned_downtime_hours": 5,
+                        }
+                    }
+                }
+            },
+            "planned_downtime_hours",
+        ),
+        (
+            {
+                "business": {
+                    "components": {
+                        "comp1": {
+                            "repair_cost": -1,
+                            "unplanned_downtime_hours": 2,
+                            "planned_downtime_hours": 1,
+                        }
+                    }
+                }
+            },
+            "repair_cost",
+        ),
         ({"plant_layout": {"plants": []}}, "at least one plant"),
         (
             {

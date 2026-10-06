@@ -63,14 +63,13 @@ data_quality_injection:
 business:
   currency: INR
   downtime_cost_per_hour: 50000          # lost production per machine-hour
-  repair_hours:                          # downtime per unplanned failure
-    unplanned_failure: 8
-    planned_maintenance: 2
-  component_repair_cost:                 # parts + labour per replacement
-    comp1: 40000
-    comp2: 60000
-    comp3: 35000
-    comp4: 75000
+  # Unplanned repairs cost more than planned ones: rush parts, overtime labour.
+  emergency_repair_premium: 1.5          # unplanned repair cost = repair_cost x 1.5
+  components:                            # per component: parts + labour, and downtime
+    comp1: { repair_cost: 40000, unplanned_downtime_hours: 8,  planned_downtime_hours: 2 }
+    comp2: { repair_cost: 60000, unplanned_downtime_hours: 10, planned_downtime_hours: 3 }
+    comp3: { repair_cost: 35000, unplanned_downtime_hours: 6,  planned_downtime_hours: 2 }
+    comp4: { repair_cost: 75000, unplanned_downtime_hours: 12, planned_downtime_hours: 3 }
 
 # -------------------------------------------------------------------
 # Plant layout (business reference data, Phase 2)
