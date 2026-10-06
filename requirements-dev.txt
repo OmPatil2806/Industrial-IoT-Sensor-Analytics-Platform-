@@ -1,4 +1,6 @@
-# Development tools (testing, linting). Includes all runtime dependencies.
+# Development tools (testing, linting, notebooks). Includes all runtime dependencies.
 -r requirements.txt
 pytest>=8.0        # testing
 ruff>=0.4          # linting + formatting
+jupyter>=1.0       # exploratory analysis notebooks
+matplotlib>=3.8    # charts in notebooks
