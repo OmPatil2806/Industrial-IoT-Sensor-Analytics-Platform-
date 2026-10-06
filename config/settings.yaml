@@ -73,6 +73,24 @@ business:
     comp4: 75000
 
 # -------------------------------------------------------------------
+# Plant layout (business reference data, Phase 2)
+# The source dataset has no plant structure, so machines are assigned
+# to plants / production lines here. Assignment is random but fixed by
+# the seed, and machines are split evenly across all lines.
+# -------------------------------------------------------------------
+plant_layout:
+  seed: 42
+  plants:
+    - plant_id: PUNE
+      name: Pune Plant
+      city: Pune
+      lines: 3
+    - plant_id: CHENNAI
+      name: Chennai Plant
+      city: Chennai
+      lines: 2
+
+# -------------------------------------------------------------------
 # Machine-learning settings
 # -------------------------------------------------------------------
 ml:

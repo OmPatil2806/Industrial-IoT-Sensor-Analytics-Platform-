@@ -72,6 +72,24 @@ class Business:
 
 
 @dataclass(frozen=True)
+class Plant:
+    plant_id: str
+    name: str
+    city: str
+    lines: int
+
+
+@dataclass(frozen=True)
+class PlantLayout:
+    seed: int
+    plants: tuple[Plant, ...]
+
+    @property
+    def total_lines(self) -> int:
+        return sum(p.lines for p in self.plants)
+
+
+@dataclass(frozen=True)
 class ML:
     prediction_horizon_hours: int
     train_end_date: date
@@ -91,6 +109,7 @@ class Settings:
     sensors: dict[str, SensorLimit]
     data_quality_injection: DataQualityInjection
     business: Business
+    plant_layout: PlantLayout
     ml: ML
     logging: Logging
 
@@ -107,6 +126,13 @@ def _validate(settings: Settings) -> None:
         raise ValueError("data_quality_injection.stuck_episodes must not be negative")
     if not 2 <= dq.stuck_min_hours <= dq.stuck_max_hours:
         raise ValueError("data_quality_injection: need 2 <= stuck_min_hours <= stuck_max_hours")
+    plant_ids = [p.plant_id for p in settings.plant_layout.plants]
+    if not plant_ids:
+        raise ValueError("plant_layout.plants must contain at least one plant")
+    if len(set(plant_ids)) != len(plant_ids):
+        raise ValueError(f"plant_layout: plant_id values must be unique, got {plant_ids}")
+    if any(p.lines < 1 for p in settings.plant_layout.plants):
+        raise ValueError("plant_layout: every plant needs at least 1 production line")
     if settings.ml.prediction_horizon_hours <= 0:
         raise ValueError("ml.prediction_horizon_hours must be positive")
     if settings.logging.level.upper() not in (
@@ -132,6 +158,10 @@ def load_settings(path: Path | str | None = None) -> Settings:
         sensors={k: SensorLimit(**v) for k, v in raw["sensors"].items()},
         data_quality_injection=DataQualityInjection(**raw["data_quality_injection"]),
         business=Business(**raw["business"]),
+        plant_layout=PlantLayout(
+            seed=raw["plant_layout"]["seed"],
+            plants=tuple(Plant(**p) for p in raw["plant_layout"]["plants"]),
+        ),
         ml=ML(
             prediction_horizon_hours=ml["prediction_horizon_hours"],
             train_end_date=date.fromisoformat(str(ml["train_end_date"])),

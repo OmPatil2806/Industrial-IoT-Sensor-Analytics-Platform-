@@ -16,6 +16,8 @@ def test_default_settings_load():
     assert settings.ml.train_end_date == date(2015, 10, 1)
     assert settings.business.currency == "INR"
     assert settings.dataset.files["telemetry"] == "PdM_telemetry.csv"
+    assert [p.plant_id for p in settings.plant_layout.plants] == ["PUNE", "CHENNAI"]
+    assert settings.plant_layout.total_lines == 5
 
 
 def test_paths_are_absolute_and_inside_project():
@@ -51,6 +53,22 @@ def test_iiot_config_env_var_overrides_path(write_config, monkeypatch):
         ({"data_quality_injection": {"stuck_min_hours": 20}}, "stuck_min_hours"),
         ({"ml": {"prediction_horizon_hours": 0}}, "prediction_horizon_hours"),
         ({"logging": {"level": "LOUD"}}, "log level"),
+        ({"plant_layout": {"plants": []}}, "at least one plant"),
+        (
+            {
+                "plant_layout": {
+                    "plants": [
+                        {"plant_id": "A", "name": "A", "city": "X", "lines": 1},
+                        {"plant_id": "A", "name": "B", "city": "Y", "lines": 1},
+                    ]
+                }
+            },
+            "unique",
+        ),
+        (
+            {"plant_layout": {"plants": [{"plant_id": "A", "name": "A", "city": "X", "lines": 0}]}},
+            "at least 1 production line",
+        ),
     ],
 )
 def test_invalid_settings_are_rejected(write_config, overrides, message):
