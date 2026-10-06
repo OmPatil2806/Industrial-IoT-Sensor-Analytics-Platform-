@@ -51,6 +51,10 @@ data_quality_injection:
   missing_rate: 0.01      # values set to empty
   spike_rate: 0.002       # values replaced by impossible readings
   duplicate_rate: 0.005   # rows duplicated (e.g. gateway retries)
+  # Stuck sensor: a sensor keeps repeating its last value for several hours.
+  stuck_episodes: 200     # number of stuck-sensor episodes across all machines
+  stuck_min_hours: 3      # shortest episode (hours of identical readings)
+  stuck_max_hours: 12     # longest episode
 
 # -------------------------------------------------------------------
 # Business assumptions (used by the business-insights layer)

@@ -58,6 +58,9 @@ class DataQualityInjection:
     missing_rate: float
     spike_rate: float
     duplicate_rate: float
+    stuck_episodes: int
+    stuck_min_hours: int
+    stuck_max_hours: int
 
 
 @dataclass(frozen=True)
@@ -100,6 +103,10 @@ def _validate(settings: Settings) -> None:
     for name in ("missing_rate", "spike_rate", "duplicate_rate"):
         if not 0.0 <= getattr(dq, name) <= 1.0:
             raise ValueError(f"data_quality_injection.{name} must be between 0 and 1")
+    if dq.stuck_episodes < 0:
+        raise ValueError("data_quality_injection.stuck_episodes must not be negative")
+    if not 2 <= dq.stuck_min_hours <= dq.stuck_max_hours:
+        raise ValueError("data_quality_injection: need 2 <= stuck_min_hours <= stuck_max_hours")
     if settings.ml.prediction_horizon_hours <= 0:
         raise ValueError("ml.prediction_horizon_hours must be positive")
     if settings.logging.level.upper() not in (
