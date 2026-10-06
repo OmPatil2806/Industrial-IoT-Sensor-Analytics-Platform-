@@ -2,7 +2,7 @@
 
 An end-to-end **Data Engineering + Machine Learning** platform that turns raw industrial sensor data into early failure warnings and business decisions, moving a plant from **reactive** to **predictive maintenance**.
 
-> **Status:** 🚧 In development. Phase 1 (project setup) complete. See the **Roadmap** section below for progress.
+> **Status:** 🚧 In development. Phase 1 (project setup) and Phase 2 (data acquisition) complete. See the **Roadmap** section below for progress.
 
 ---
 
@@ -69,8 +69,9 @@ The project follows a **Medallion Architecture** (Bronze → Silver → Gold), f
 | `PdM_machines.csv` | Machine metadata: model, age |
 
 **Enhancements (hybrid approach):**
-- **Data-quality injection:** the original dataset is very clean, so a reproducible script adds realistic problems (missing values, sensor spikes, duplicate rows) to a *copy* of the raw data. This gives the Silver layer real cleaning work. Original files are never modified.
-- **Business reference data:** plants, production lines, downtime cost per hour and repair cost per failure type, which the business-insights layer needs.
+- **Data contract:** 45 automated checks (files, columns, row counts, date ranges, machine IDs, allowed values) confirm the source data is complete before any processing.
+- **Data-quality injection:** the original dataset is very clean, so a reproducible script adds realistic problems to a *copy* of the telemetry: **stuck sensors**, **missing values**, **impossible spikes** and **duplicate rows**. A manifest records exactly what was injected, so the Silver layer can later be proven to catch every problem. Original files are never modified.
+- **Business reference data:** each machine is assigned to a plant (Pune, Chennai) and production line, and a cost table compares an unplanned failure with planned maintenance per component (repair cost, emergency premium, downtime). Costs are illustrative assumptions set in `config/settings.yaml`.
 
 ### 2️⃣ Bronze Layer: Raw Landing
 - Exact, unchanged copy of the source data stored as **Parquet**.
@@ -174,22 +175,24 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 ├── requirements-dev.txt     # + testing / linting tools
 ├── config/
 │   └── settings.yaml        # paths, sensor limits, cost assumptions, ML & logging settings
-├── data/                    # not committed to Git
-│   ├── raw/
-│   ├── bronze/
+├── data/
+│   ├── raw/                 # 5 source CSVs (committed); generated files are not
+│   ├── bronze/              # generated layers below are not committed
 │   ├── silver/
 │   └── gold/
 ├── src/iiot/
+│   ├── cli.py               # `iiot` command-line interface
 │   ├── config.py            # loads & validates settings.yaml
 │   ├── utils/logger.py      # console + file logging
-│   ├── ingestion/           # (Phase 2) download, data-quality injection, reference data
+│   ├── ingestion/           # download, data contract, data-quality injection, reference data
 │   ├── bronze/              # (Phase 3)
 │   ├── silver/              # (Phase 4)
 │   ├── gold/                # (Phase 5)
 │   ├── data_model/          # (Phase 6)
 │   └── ml/                  # (Phase 7)
 ├── dashboard/               # (Phase 8) Streamlit app
-├── notebooks/               # exploratory data analysis
+├── notebooks/
+│   └── 01_eda_raw_data.ipynb  # exploratory data analysis of the raw data
 ├── reports/                 # (Phase 9) business insights
 ├── models/                  # trained models (not committed)
 ├── tests/                   # pytest test suite
@@ -204,7 +207,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 ## 🗺️ Roadmap
 
 - [x] **Phase 1: Project setup:** structure, dependencies, configuration, logging, tests, docs
-- [ ] **Phase 2: Sensor data acquisition:** download, data-quality injection, reference data
+- [x] **Phase 2: Sensor data acquisition:** download, data contract, EDA, data-quality injection, reference data
 - [ ] **Phase 3: Bronze layer:** raw → Parquet with ingestion metadata
 - [ ] **Phase 4: Silver layer:** cleaning, validation, data-quality report
 - [ ] **Phase 5: Gold layer:** aggregates, features, labels, KPIs
@@ -265,7 +268,33 @@ All tests should pass and ruff should report `All checks passed!`.
 ### Configuration
 All settings live in [`config/settings.yaml`](config/settings.yaml): data paths, sensor validation limits, data-quality injection rates, business cost assumptions, ML settings and log level. To use a different file, set the `IIOT_CONFIG` environment variable.
 
-> Pipeline run commands will be added here as each phase is completed.
+---
+
+## 📥 Get the Data (Phase 2)
+
+The 5 source CSV files are included in `data/raw/`. To fetch them yourself instead, use the [Kaggle dataset page](https://www.kaggle.com/datasets/arnabbiswas1/microsoft-azure-predictive-maintenance) or the download step below. It needs a free Kaggle account, logged in once with `kaggle auth login` (or an API token from [kaggle.com/settings/api](https://www.kaggle.com/settings/api)).
+
+### Run all data preparation steps
+```bash
+iiot data prepare
+```
+This runs 4 steps in order and stops at the first failure:
+
+| Step | Command | Output (in `data/raw/`) |
+|---|---|---|
+| 1. Download | `iiot data download` | 5 `PdM_*.csv` files (skipped if already present; `--force` to re-download) |
+| 2. Validate | `iiot data validate` | `raw_validation_report.json`: 45 data-contract checks |
+| 3. Inject issues | `iiot data inject` | `PdM_telemetry_dirty.csv` + `injection_manifest.json` |
+| 4. Reference data | `iiot data reference` | `ref_machine_location.csv` + `ref_component_costs.csv` |
+
+Each step can also be run on its own with the command shown. `python -m iiot ...` works the same as `iiot ...`.
+
+> If the `iiot` command is not found, run `pip install -e .` again (it registers the command).
+
+Generated files are reproducible (fixed seeds in `config/settings.yaml`) and are not committed to Git.
+
+### Explore the data
+Open [`notebooks/01_eda_raw_data.ipynb`](notebooks/01_eda_raw_data.ipynb) in VS Code or Jupyter, select the `.venv` kernel and run all cells.
 
 ---
 

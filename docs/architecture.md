@@ -68,8 +68,24 @@ This document explains **how** the Industrial IoT Sensor Analytics Platform is b
 | `PdM_machines.csv` | machine | `machineID`, `model`, `age` |
 
 **Hybrid enhancements:**
-- **Data-quality injection.** The source data is unusually clean. Real sensor feeds are not. A reproducible script (fixed seed, rates in `config/settings.yaml`) writes a *separate copy* of the telemetry with missing values, impossible spikes and duplicate rows. The original files stay untouched, and the injection is documented, so it is transparent and not hidden.
-- **Business reference data.** The dataset has no costs or plant structure. A small reference table adds plant, production line, downtime cost per hour and repair cost per component. These values are illustrative assumptions and are configurable.
+- **Data contract** (`iiot.ingestion.validate_raw`). 45 checks run before any processing: files present, expected columns, row-count ranges, no nulls, timestamps parse and fall in the expected range, valid machine IDs (exactly 100 machines), numeric sensors and allowed category values. A failed check stops the pipeline.
+- **Data-quality injection** (`iiot.ingestion.inject_issues`). The source data is unusually clean. Real sensor feeds are not. A reproducible script (fixed seed, rates in `config/settings.yaml`) writes `PdM_telemetry_dirty.csv`, a *separate copy* of the telemetry, with four problem types:
+
+  | Problem | Rate / size | Simulates |
+  |---|---|---|
+  | Stuck sensor | 200 episodes of 3–12 h | a frozen sensor repeating its last value |
+  | Missing values | 1% of sensor cells | dropped readings |
+  | Spikes | 0.2% of sensor cells, always outside the validation limits | sensor glitches (`-999`, `9999`) |
+  | Duplicate rows | 0.5% of rows, right after the original | gateway retries |
+
+  Missing values and spikes never land on stuck cells or each other, so counts are exact. `injection_manifest.json` records exactly what was injected. The original file stays untouched and the injection is documented, so it is transparent, not hidden.
+- **Business reference data** (`iiot.ingestion.reference_data`). The dataset has no costs or plant structure.
+  - `ref_machine_location.csv`: machines shuffled with a fixed seed and split evenly across production lines (Pune: 3 lines, Chennai: 2 lines, 20 machines each).
+  - `ref_component_costs.csv`: per component, the cost of an **unplanned failure** (repair cost × emergency premium + unplanned downtime × hourly downtime cost) vs **planned maintenance** (repair cost + planned downtime × hourly cost), and the saving if a failure is prevented.
+
+  All values are illustrative assumptions, configurable in `config/settings.yaml`.
+
+All four Phase 2 steps run with one command: `iiot data prepare`.
 
 ### 3.2 Bronze Layer: Raw Landing
 
@@ -92,10 +108,11 @@ Transformations, in order:
 1. **Standardise:** snake_case column names, parsed timestamps, correct numeric types.
 2. **Deduplicate:** one row per `(machine_id, datetime)`.
 3. **Validate:** readings outside the physical limits in `config/settings.yaml` → null (a sensor glitch is not a real measurement).
-4. **Regularise:** each machine on a complete hourly grid. Short gaps are interpolated and long gaps stay null.
-5. **Enrich:** join machine master data (model, age) and reference data (plant, line).
+4. **Stuck sensors:** runs of 3+ identical consecutive readings for one machine and sensor → keep the first value, null the repeats (a frozen sensor is not measuring).
+5. **Regularise:** each machine on a complete hourly grid. Short gaps are interpolated and long gaps stay null.
+6. **Enrich:** join machine master data (model, age) and reference data (plant, line).
 
-**Data-quality report:** rows in/out, duplicates removed, values nulled per rule, and remaining nulls. Quality problems are measured and reported, not silently fixed.
+**Data-quality report:** rows in/out, duplicates removed, values nulled per rule, stuck runs found, gaps filled, and remaining nulls. Quality problems are measured and reported, not silently fixed. A test compares the report with `injection_manifest.json` to prove every injected problem is caught.
 
 ### 3.4 Gold Layer: Business & ML Ready
 
@@ -156,7 +173,8 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **Logging** | `iiot.utils.logger.get_logger(__name__)`. Writes to console and `logs/pipeline.log` (rotating, 5 MB × 3). Level is set in config. |
 | **Testing** | pytest. Tests use temporary config copies and never touch real data or logs. |
 | **Code quality** | ruff for linting and formatting (config in `pyproject.toml`). |
-| **Version control** | Data, models, logs and secrets are excluded via `.gitignore`. Only code and documentation are committed. |
+| **Command line** | `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`. Each step logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
+| **Version control** | Code, documentation and the 5 source CSVs are committed. Generated data (dirty copy, reference data, Bronze/Silver/Gold), models, logs and secrets are excluded via `.gitignore`, because they can be regenerated with one command. |
 
 ---
 
@@ -180,7 +198,8 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 |---|---|---|
 | `iiot.config` | ✅ Done | Load and validate settings |
 | `iiot.utils.logger` | ✅ Done | Project-wide logging |
-| `iiot.ingestion` | ⏳ Phase 2 | Download dataset, inject quality issues, build reference data |
+| `iiot.cli` | ✅ Done | `iiot` command (data group; later phases add groups) |
+| `iiot.ingestion` | ✅ Done | Download dataset, data contract, inject quality issues, build reference data |
 | `iiot.bronze` | ⏳ Phase 3 | Raw → Bronze |
 | `iiot.silver` | ⏳ Phase 4 | Bronze → Silver + data-quality report |
 | `iiot.gold` | ⏳ Phase 5 | Features, labels, KPIs |
