@@ -2,7 +2,7 @@
 
 An end-to-end **Data Engineering + Machine Learning** platform that turns raw industrial sensor data into early failure warnings and business decisions, moving a plant from **reactive** to **predictive maintenance**.
 
-> **Status:** 🚧 In development. Phase 1 (project setup) and Phase 2 (data acquisition) complete. See the **Roadmap** section below for progress.
+> **Status:** 🚧 In development. Phases 1–3 complete: project setup, data acquisition and the Bronze layer. See the **Roadmap** section below for progress.
 
 ---
 
@@ -74,8 +74,10 @@ The project follows a **Medallion Architecture** (Bronze → Silver → Gold), f
 - **Business reference data:** each machine is assigned to a plant (Pune, Chennai) and production line, and a cost table compares an unplanned failure with planned maintenance per component (repair cost, emergency premium, downtime). Costs are illustrative assumptions set in `config/settings.yaml`.
 
 ### 2️⃣ Bronze Layer: Raw Landing
-- Exact, unchanged copy of the source data stored as **Parquet**.
-- Adds ingestion metadata: `_source_file`, `_ingested_at`, `_batch_id`.
+- Exact, unchanged copy of the 7 sources stored as **Parquet**. Every source column is kept **as text**, exactly as received (schema-on-read), so nothing is lost or silently converted.
+- Adds lineage metadata to every row: `_source_file`, `_source_line`, `_ingested_at`, `_batch_id`.
+- **Idempotent:** each file's SHA-256 hash is logged, so re-runs skip unchanged files. Row counts are reconciled on every load.
+- **Verified with SQL:** a DuckDB report checks every table (exists, readable, row counts, columns, single batch).
 - No cleaning, so the data can always be reprocessed from here.
 
 ### 3️⃣ Silver Layer: Cleaned & Validated
@@ -185,7 +187,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 │   ├── config.py            # loads & validates settings.yaml
 │   ├── utils/logger.py      # console + file logging
 │   ├── ingestion/           # download, data contract, data-quality injection, reference data
-│   ├── bronze/              # (Phase 3)
+│   ├── bronze/              # Bronze loader, batch pipeline, DuckDB report
 │   ├── silver/              # (Phase 4)
 │   ├── gold/                # (Phase 5)
 │   ├── data_model/          # (Phase 6)
@@ -208,7 +210,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 
 - [x] **Phase 1: Project setup:** structure, dependencies, configuration, logging, tests, docs
 - [x] **Phase 2: Sensor data acquisition:** download, data contract, EDA, data-quality injection, reference data
-- [ ] **Phase 3: Bronze layer:** raw → Parquet with ingestion metadata
+- [x] **Phase 3: Bronze layer:** raw → Parquet with lineage metadata, idempotent reloads, DuckDB verification
 - [ ] **Phase 4: Silver layer:** cleaning, validation, data-quality report
 - [ ] **Phase 5: Gold layer:** aggregates, features, labels, KPIs
 - [ ] **Phase 6: Data model:** star schema (facts & dimensions)
@@ -293,8 +295,49 @@ Each step can also be run on its own with the command shown. `python -m iiot ...
 
 Generated files are reproducible (fixed seeds in `config/settings.yaml`) and are not committed to Git.
 
+### Run the whole pipeline
+```bash
+iiot run
+```
+Runs every step built so far, in order: data preparation (4 steps), then Bronze ingest and Bronze report. It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
+
 ### Explore the data
 Open [`notebooks/01_eda_raw_data.ipynb`](notebooks/01_eda_raw_data.ipynb) in VS Code or Jupyter, select the `.venv` kernel and run all cells.
+
+---
+
+## 🥉 Bronze Layer (Phase 3)
+
+```bash
+iiot bronze ingest            # load the 7 sources into data/bronze/ (unchanged files are skipped)
+iiot bronze ingest --force    # reload every table
+iiot bronze report            # verify all tables with DuckDB SQL
+```
+
+| Bronze table | Source file (in `data/raw/`) | Rows |
+|---|---|---|
+| `telemetry` | `PdM_telemetry_dirty.csv` (the sensor feed, with injected issues) | 880,502 |
+| `errors` | `PdM_errors.csv` | 3,919 |
+| `maintenance` | `PdM_maint.csv` | 3,286 |
+| `failures` | `PdM_failures.csv` | 761 |
+| `machines` | `PdM_machines.csv` | 100 |
+| `machine_location` | `ref_machine_location.csv` | 100 |
+| `component_costs` | `ref_component_costs.csv` | 4 |
+
+Also written to `data/bronze/`:
+- `_ingestion_log.json`: per table, the source file, its SHA-256 hash, rows, columns, sizes and batch, plus the batch history.
+- `bronze_report.json`: per table, the verification checks, empty cells per column, compression ratio and a *stale* flag if the raw file changed since it was loaded.
+
+Query Bronze directly with SQL:
+```python
+import duckdb
+# Bronze stores values as text, so cast machineID to sort numerically (1, 2, 3 ... not 1, 10, 100)
+duckdb.sql("""
+    SELECT CAST(machineID AS INTEGER) AS machine, count(*) AS readings
+    FROM 'data/bronze/telemetry.parquet'
+    GROUP BY 1 ORDER BY 1 LIMIT 5
+""").show()
+```
 
 ---
 

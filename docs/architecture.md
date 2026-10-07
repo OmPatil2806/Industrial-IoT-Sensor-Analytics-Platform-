@@ -91,9 +91,19 @@ All four Phase 2 steps run with one command: `iiot data prepare`.
 
 | | |
 |---|---|
-| **Input** | `data/raw/*.csv` |
-| **Output** | `data/bronze/<table>.parquet` |
-| **Transformations** | None to the data itself. Adds `_source_file`, `_ingested_at`, `_batch_id`. |
+| **Input** | 7 files in `data/raw/`: the dirty telemetry (the sensor feed), errors, maintenance, failures, machines, machine location, component costs |
+| **Output** | `data/bronze/<table>.parquet`, `_ingestion_log.json`, `bronze_report.json` |
+| **Transformations** | None to the data itself. Adds `_source_file`, `_source_line`, `_ingested_at`, `_batch_id`. |
+| **Code** | `iiot.bronze.ingest` (one file), `iiot.bronze.pipeline` (batch), `iiot.bronze.report` (verification) |
+
+Design rules:
+- **Schema-on-read:** every source column is stored as **text** exactly as received; empty cells stay `""`. Converting types here would crash on, or silently null out, malformed values. Silver does the typing, where problems are counted and reported.
+- **Lineage:** `_source_line` is the line number in the source CSV (header = line 1), so any downstream value can be traced to the exact line it came from.
+- **Reconciliation:** CSV data lines, rows read and Parquet rows must be equal, or the load fails.
+- **Atomic writes:** each table is written to a temporary file and renamed, so a failed load never leaves a half-written table.
+- **Idempotency:** each source file's SHA-256 hash is recorded in `_ingestion_log.json`. Unchanged files are skipped; `--force` reloads everything. Because Phase 2 is deterministic, re-running the full pipeline skips every Bronze table.
+- **Verification:** `bronze_report.json` is produced with DuckDB SQL queries: table exists, is readable, row count and columns match the log, and all rows come from one batch. A raw file changed since loading is flagged as *stale*.
+- **Why the dirty telemetry:** in this project it plays the role of the plant's sensor feed. The clean original stays in `data/raw/` as ground truth.
 
 **Why:** Bronze is a faithful, queryable copy of the source. If a downstream bug is found, Silver and Gold can be rebuilt from Bronze without downloading again, and Bronze always shows what the source actually sent.
 
@@ -173,7 +183,7 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **Logging** | `iiot.utils.logger.get_logger(__name__)`. Writes to console and `logs/pipeline.log` (rotating, 5 MB × 3). Level is set in config. |
 | **Testing** | pytest. Tests use temporary config copies and never touch real data or logs. |
 | **Code quality** | ruff for linting and formatting (config in `pyproject.toml`). |
-| **Command line** | `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`. Each step logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
+| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
 | **Version control** | Code, documentation and the 5 source CSVs are committed. Generated data (dirty copy, reference data, Bronze/Silver/Gold), models, logs and secrets are excluded via `.gitignore`, because they can be regenerated with one command. |
 
 ---
@@ -198,9 +208,9 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 |---|---|---|
 | `iiot.config` | ✅ Done | Load and validate settings |
 | `iiot.utils.logger` | ✅ Done | Project-wide logging |
-| `iiot.cli` | ✅ Done | `iiot` command (data group; later phases add groups) |
+| `iiot.cli` | ✅ Done | `iiot` command: `run`, `data` and `bronze` groups (later phases add groups) |
 | `iiot.ingestion` | ✅ Done | Download dataset, data contract, inject quality issues, build reference data |
-| `iiot.bronze` | ⏳ Phase 3 | Raw → Bronze |
+| `iiot.bronze` | ✅ Done | Raw → Bronze: loader, idempotent batch pipeline, DuckDB report |
 | `iiot.silver` | ⏳ Phase 4 | Bronze → Silver + data-quality report |
 | `iiot.gold` | ⏳ Phase 5 | Features, labels, KPIs |
 | `iiot.data_model` | ⏳ Phase 6 | Star schema |
