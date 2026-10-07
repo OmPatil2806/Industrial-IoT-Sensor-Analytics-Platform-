@@ -331,6 +331,7 @@ Also written to `data/bronze/`:
 Query Bronze directly with SQL:
 ```python
 import duckdb
+
 # Bronze stores values as text, so cast machineID to sort numerically (1, 2, 3 ... not 1, 10, 100)
 duckdb.sql("""
     SELECT CAST(machineID AS INTEGER) AS machine, count(*) AS readings
