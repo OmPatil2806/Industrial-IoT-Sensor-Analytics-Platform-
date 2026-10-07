@@ -64,6 +64,13 @@ class DataQualityInjection:
 
 
 @dataclass(frozen=True)
+class Silver:
+    stuck_min_run: int
+    max_fill_hours: int
+    fill_window_hours: int
+
+
+@dataclass(frozen=True)
 class ComponentCost:
     repair_cost: float
     unplanned_downtime_hours: float
@@ -115,6 +122,7 @@ class Settings:
     dataset: Dataset
     sensors: dict[str, SensorLimit]
     data_quality_injection: DataQualityInjection
+    silver: Silver
     business: Business
     plant_layout: PlantLayout
     ml: ML
@@ -133,6 +141,12 @@ def _validate(settings: Settings) -> None:
         raise ValueError("data_quality_injection.stuck_episodes must not be negative")
     if not 2 <= dq.stuck_min_hours <= dq.stuck_max_hours:
         raise ValueError("data_quality_injection: need 2 <= stuck_min_hours <= stuck_max_hours")
+    if settings.silver.stuck_min_run < 2:
+        raise ValueError("silver.stuck_min_run must be at least 2")
+    if settings.silver.max_fill_hours < 0:
+        raise ValueError("silver.max_fill_hours must not be negative")
+    if settings.silver.fill_window_hours < 2:
+        raise ValueError("silver.fill_window_hours must be at least 2")
     business = settings.business
     if business.downtime_cost_per_hour < 0:
         raise ValueError("business.downtime_cost_per_hour must not be negative")
@@ -177,6 +191,7 @@ def load_settings(path: Path | str | None = None) -> Settings:
         dataset=Dataset(**raw["dataset"]),
         sensors={k: SensorLimit(**v) for k, v in raw["sensors"].items()},
         data_quality_injection=DataQualityInjection(**raw["data_quality_injection"]),
+        silver=Silver(**raw["silver"]),
         business=Business(
             **{k: v for k, v in raw["business"].items() if k != "components"},
             components={k: ComponentCost(**v) for k, v in raw["business"]["components"].items()},

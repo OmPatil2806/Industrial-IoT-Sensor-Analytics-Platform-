@@ -57,6 +57,14 @@ data_quality_injection:
   stuck_max_hours: 12     # longest episode
 
 # -------------------------------------------------------------------
+# Silver layer cleaning rules (Phase 4)
+# -------------------------------------------------------------------
+silver:
+  stuck_min_run: 3           # this many identical consecutive hourly readings = stuck sensor
+  max_fill_hours: 3          # fill gaps up to this length; longer gaps stay missing
+  fill_window_hours: 24      # fill value = mean of valid readings in this window around the gap
+
+# -------------------------------------------------------------------
 # Business assumptions (used by the business-insights layer)
 # Illustrative values - replace with real plant figures if available.
 # -------------------------------------------------------------------

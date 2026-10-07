@@ -22,6 +22,7 @@ the bad values set to null; later cleaning steps handle those.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,6 +31,7 @@ import pandas as pd
 
 from iiot.config import get_settings
 from iiot.ingestion.validate_raw import parse_datetimes
+from iiot.silver.cleaning import CleaningStats, clean
 from iiot.utils.logger import get_logger
 
 logger = get_logger("iiot.silver.telemetry")
@@ -101,6 +103,54 @@ def load_bronze(bronze_dir: Path | None = None) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"{path} not found. Run `iiot bronze ingest` first.")
     return pd.read_parquet(path)
+
+
+def build(
+    bronze_dir: Path | None = None, silver_dir: Path | None = None
+) -> tuple[pd.DataFrame, TypingStats, CleaningStats]:
+    """Bronze telemetry -> typed -> cleaned -> data/silver/telemetry.parquet."""
+    settings = get_settings()
+    silver_dir = Path(silver_dir or settings.paths.silver)
+    typed, typing_stats = standardise(load_bronze(bronze_dir))
+    log_typing_stats(typing_stats)
+    cleaned, cleaning_stats = clean(typed, settings.sensors, settings.silver)
+    log_cleaning_stats(cleaning_stats)
+
+    silver_dir.mkdir(parents=True, exist_ok=True)
+    out = silver_dir / "telemetry.parquet"
+    tmp = out.with_name(f".{out.name}.tmp")
+    try:
+        cleaned.to_parquet(tmp, index=False, compression="zstd")
+        os.replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)
+    logger.info("Wrote %s (%s rows)", out, f"{len(cleaned):,}")
+    return cleaned, typing_stats, cleaning_stats
+
+
+def log_cleaning_stats(stats: CleaningStats) -> None:
+    logger.info(
+        "Cleaned telemetry: %s rows in -> %s rows out",
+        f"{stats.rows_in:,}",
+        f"{stats.rows_out:,}",
+    )
+    logger.info(
+        "  duplicates removed %s (conflicting %s), off-hour rows dropped %s, grid rows added %s",
+        f"{stats.duplicates_removed:,}",
+        f"{stats.conflicting_duplicates:,}",
+        f"{stats.rows_off_hour_dropped:,}",
+        f"{stats.grid_rows_added:,}",
+    )
+    for s in stats.out_of_range_nulled:
+        logger.info(
+            "  %-10s out-of-range %6s  stuck runs %4s (%5s values)  filled %6s  missing %6s",
+            s,
+            f"{stats.out_of_range_nulled[s]:,}",
+            f"{stats.stuck_runs[s]:,}",
+            f"{stats.stuck_values_nulled[s]:,}",
+            f"{stats.filled[s]:,}",
+            f"{stats.missing_after[s]:,}",
+        )
 
 
 def log_typing_stats(stats: TypingStats) -> None:
