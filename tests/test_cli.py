@@ -13,6 +13,7 @@ def calls(monkeypatch):
 
     class Calls(list):
         report: type
+        silver_passed: bool
 
     recorded = Calls()
 
@@ -37,6 +38,17 @@ def calls(monkeypatch):
     monkeypatch.setattr(
         cli.bronze_report, "build_report", lambda: recorded.append("bronze-report") or Report()
     )
+    monkeypatch.setattr(
+        cli.silver_report,
+        "build_silver",
+        lambda: recorded.append("silver-build") or {"passed": recorded.silver_passed},
+    )
+    monkeypatch.setattr(
+        cli.silver_report,
+        "show_report",
+        lambda: recorded.append("silver-report") or {"passed": recorded.silver_passed},
+    )
+    recorded.silver_passed = True
     recorded.report = Report
     return recorded
 
@@ -104,6 +116,7 @@ def test_run_executes_the_full_pipeline_in_order(calls):
         "reference",
         "bronze-ingest(force=False)",
         "bronze-report",
+        "silver-build",
     ]
 
 
@@ -142,3 +155,32 @@ def test_bronze_error_stops_the_pipeline(calls, monkeypatch):
     monkeypatch.setattr(cli.bronze_pipeline, "ingest_all", failing)
     assert cli.main(["run"]) == 1
     assert calls == ["download(force=False)", "validate", "inject", "reference"]
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [(["build"], ["silver-build"]), (["report"], ["silver-report"])],
+)
+def test_silver_commands(calls, command, expected):
+    assert cli.main(["silver", *command]) == 0
+    assert calls == expected
+
+
+@pytest.mark.parametrize("command", ["build", "report"])
+def test_failed_silver_checks_return_error(calls, command):
+    calls.silver_passed = False
+    assert cli.main(["silver", command]) == 1
+
+
+def test_failed_silver_build_fails_the_full_run(calls):
+    calls.silver_passed = False
+    assert cli.main(["run"]) == 1
+    assert calls[-1] == "silver-build"
+
+
+def test_silver_report_without_build_returns_error(calls, monkeypatch):
+    def missing():
+        raise FileNotFoundError("silver_quality_report.json not found")
+
+    monkeypatch.setattr(cli.silver_report, "show_report", missing)
+    assert cli.main(["silver", "report"]) == 1

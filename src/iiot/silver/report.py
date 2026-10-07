@@ -159,6 +159,17 @@ def build_silver(
     return report
 
 
+def show_report(silver_dir: Path | None = None) -> dict:
+    """Log the summary of the latest silver_quality_report.json and return the report."""
+    path = Path(silver_dir or get_settings().paths.silver) / REPORT_FILE_NAME
+    if not path.exists():
+        raise FileNotFoundError(f"{path} not found. Run `iiot silver build` first.")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    logger.info("Report generated at %s", report["generated_at"])
+    _log_summary(report, path)
+    return report
+
+
 def _log_summary(report: dict, out: Path) -> None:
     manifest = report["manifest_check"]
     if manifest["status"] == "checked":

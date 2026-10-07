@@ -2,7 +2,7 @@
 
 An end-to-end **Data Engineering + Machine Learning** platform that turns raw industrial sensor data into early failure warnings and business decisions, moving a plant from **reactive** to **predictive maintenance**.
 
-> **Status:** 🚧 In development. Phases 1–3 complete: project setup, data acquisition and the Bronze layer. See the **Roadmap** section below for progress.
+> **Status:** 🚧 In development. Phases 1–4 complete: project setup, data acquisition, Bronze and Silver layers. See the **Roadmap** section below for progress.
 
 ---
 
@@ -81,12 +81,12 @@ The project follows a **Medallion Architecture** (Bronze → Silver → Gold), f
 - No cleaning, so the data can always be reprocessed from here.
 
 ### 3️⃣ Silver Layer: Cleaned & Validated
-- Type casting, timestamp standardisation, consistent naming.
-- Deduplication.
-- Validation against physical sensor limits (glitches → null).
-- Regular time grid per machine, with gap filling for short gaps.
-- Joins with machine master data.
-- **Data-quality report:** rows in/out, duplicates removed, nulls, rule violations.
+- Type casting, timestamp standardisation, consistent naming; unparseable values counted.
+- Deduplication, physical-limit validation (spikes → null) and **stuck-sensor detection**.
+- Complete hourly grid per machine; short gaps (≤ 3 h) filled with the 24 h window mean, longer gaps left empty.
+- A **quality flag** per sensor value: `ok`, `filled` or `missing`.
+- Machines joined with their plant and production line; events validated against known machines and components.
+- **Proven, not assumed:** the quality report checks the cleaning against the injection manifest and the clean original data.
 
 ### 4️⃣ Gold Layer: Business & ML Ready
 - **Aggregations:** hourly / daily mean, min, max, std per machine and sensor.
@@ -188,7 +188,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 │   ├── utils/logger.py      # console + file logging
 │   ├── ingestion/           # download, data contract, data-quality injection, reference data
 │   ├── bronze/              # Bronze loader, batch pipeline, DuckDB report
-│   ├── silver/              # (Phase 4)
+│   ├── silver/              # typing, cleaning rules, event/master tables, quality report
 │   ├── gold/                # (Phase 5)
 │   ├── data_model/          # (Phase 6)
 │   └── ml/                  # (Phase 7)
@@ -211,7 +211,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 - [x] **Phase 1: Project setup:** structure, dependencies, configuration, logging, tests, docs
 - [x] **Phase 2: Sensor data acquisition:** download, data contract, EDA, data-quality injection, reference data
 - [x] **Phase 3: Bronze layer:** raw → Parquet with lineage metadata, idempotent reloads, DuckDB verification
-- [ ] **Phase 4: Silver layer:** cleaning, validation, data-quality report
+- [x] **Phase 4: Silver layer:** typing, cleaning rules, quality flags, validated tables, data-quality report with proofs
 - [ ] **Phase 5: Gold layer:** aggregates, features, labels, KPIs
 - [ ] **Phase 6: Data model:** star schema (facts & dimensions)
 - [ ] **Phase 7: Machine learning:** anomaly detection, failure prediction, RUL
@@ -299,7 +299,7 @@ Generated files are reproducible (fixed seeds in `config/settings.yaml`) and are
 ```bash
 iiot run
 ```
-Runs every step built so far, in order: data preparation (4 steps), then Bronze ingest and Bronze report. It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
+Runs every step built so far, in order: data preparation (4 steps), Bronze ingest and Bronze report, then the Silver build. On the real data the whole run takes about 20–25 seconds. It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
 
 ### Explore the data
 Open [`notebooks/01_eda_raw_data.ipynb`](notebooks/01_eda_raw_data.ipynb) in VS Code or Jupyter, select the `.venv` kernel and run all cells.
@@ -339,6 +339,51 @@ duckdb.sql("""
     GROUP BY 1 ORDER BY 1 LIMIT 5
 """).show()
 ```
+
+---
+
+## 🥈 Silver Layer (Phase 4)
+
+```bash
+iiot silver build     # clean Bronze into Silver, run both proofs, write the quality report
+iiot silver report    # show the latest quality report (PASSED / FAILED)
+```
+
+### Tables (in `data/silver/`)
+| Table | Rows (real data) | Columns |
+|---|---|---|
+| `telemetry` | 876,100 (one per machine-hour) | `machine_id`, `timestamp`, `volt`, `rotate`, `pressure`, `vibration`, a `<sensor>_quality` flag for each sensor, lineage |
+| `machines` | 100 | `machine_id`, `model`, `age`, `plant_id`, `plant_name`, `city`, `line_id` |
+| `errors` | 3,919 | `timestamp`, `machine_id`, `error_id` |
+| `maintenance` | 3,286 | `timestamp`, `machine_id`, `component` |
+| `failures` | 761 | `timestamp`, `machine_id`, `component` |
+| `component_costs` | 4 | `component` and numeric repair, downtime and saving columns |
+
+### Telemetry cleaning rules (in order)
+| # | Rule | Real data |
+|---|---|---|
+| 1 | Convert text to typed columns; count empty and unparseable values | 0 unparseable |
+| 2 | Remove duplicate rows (same machine and hour), keeping the first | 4,402 removed |
+| 3 | Readings outside the sensor limits → empty | 6,907 spikes |
+| 4 | 3+ identical consecutive readings (stuck sensor) → keep the first, empty the repeats | 200 runs, 1,322 values |
+| 5 | Complete hourly grid per machine | 876,100 rows |
+| 6 | Fill gaps of ≤ 3 h with the mean of the surrounding 24 h | ~10,500 values per sensor |
+
+Thresholds live in the `silver` section of `config/settings.yaml`.
+
+### Proof that the cleaning works
+`data/silver/silver_quality_report.json` contains two checks. Both pass on the real data:
+
+**1. Against the injection manifest:** Silver found exactly what was injected: 4,402 duplicates, 6,907 spikes (also per sensor), 200 stuck runs and 1,322 stuck repeats.
+
+**2. Against the clean original data:** every value flagged `ok` is identical to the original, and the error of the filled values is measured:
+
+| Sensor | Filled-value MAE (24 h mean) | Linear interpolation would give |
+|---|---|---|
+| volt | 12.30 | 14.74 |
+| rotate | 40.68 | 48.58 |
+| pressure | 8.23 | 9.89 |
+| vibration | 4.15 | 4.95 |
 
 ---
 

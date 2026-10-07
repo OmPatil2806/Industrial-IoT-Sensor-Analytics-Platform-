@@ -1,12 +1,14 @@
 """Command-line interface: `iiot <group> <command>`.
 
 Examples:
-    iiot run                     # full pipeline: data preparation -> Bronze
+    iiot run                     # full pipeline: data preparation -> Bronze -> Silver
     iiot data prepare            # download -> validate -> inject issues -> reference data
     iiot data download --force   # re-download the Kaggle dataset
     iiot data validate           # run the raw data contract only
     iiot bronze ingest           # load raw files into Bronze (unchanged files skipped)
     iiot bronze report           # verify Bronze tables with DuckDB
+    iiot silver build            # clean data into Silver and prove the cleaning worked
+    iiot silver report           # show the latest Silver quality report
 
 Also available as `python -m iiot ...`.
 """
@@ -21,6 +23,7 @@ from iiot.bronze import pipeline as bronze_pipeline
 from iiot.bronze import report as bronze_report
 from iiot.bronze.ingest import BronzeError
 from iiot.ingestion import download, inject_issues, reference_data, validate_raw
+from iiot.silver import report as silver_report
 from iiot.utils.logger import get_logger
 
 logger = get_logger("iiot.cli")
@@ -56,6 +59,16 @@ def _bronze_report(args: argparse.Namespace) -> None:
         raise StepFailed("Bronze verification failed - see the FAIL lines above.")
 
 
+def _silver_build(args: argparse.Namespace) -> None:
+    if not silver_report.build_silver()["passed"]:
+        raise StepFailed("Silver quality checks failed - see the MISMATCH/NO lines above.")
+
+
+def _silver_report(args: argparse.Namespace) -> None:
+    if not silver_report.show_report()["passed"]:
+        raise StepFailed("The latest Silver quality report did not pass.")
+
+
 Step = tuple[Callable[[argparse.Namespace], None], str]
 
 # Every pipeline step, keyed by name. Groups and `iiot run` pick steps from here.
@@ -66,10 +79,12 @@ STEPS: dict[str, Step] = {
     "reference": (_reference, "generate plant/line and component cost reference data"),
     "bronze-ingest": (_bronze_ingest, "load raw files into Bronze Parquet tables"),
     "bronze-report": (_bronze_report, "verify Bronze tables with DuckDB"),
+    "silver-build": (_silver_build, "clean Bronze into Silver tables and prove the cleaning"),
+    "silver-report": (_silver_report, "show the latest Silver quality report"),
 }
 DATA_STEPS = ["download", "validate", "inject", "reference"]
 BRONZE_STEPS = ["bronze-ingest", "bronze-report"]
-FULL_PIPELINE = DATA_STEPS + BRONZE_STEPS
+FULL_PIPELINE = DATA_STEPS + BRONZE_STEPS + ["silver-build"]
 
 
 def _run_steps(names: list[str], args: argparse.Namespace) -> int:
@@ -97,7 +112,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     groups = parser.add_subparsers(dest="group", required=True)
 
-    run = groups.add_parser("run", help="run the full pipeline (data preparation -> Bronze)")
+    run = groups.add_parser(
+        "run", help="run the full pipeline (data preparation -> Bronze -> Silver)"
+    )
     run.add_argument("--force-download", action="store_true", help="re-download the dataset")
     run.add_argument("--force-bronze", action="store_true", help="reload every Bronze table")
 
@@ -122,6 +139,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", dest="force_bronze", action="store_true", help="reload even unchanged files"
     )
     bronze_cmds.add_parser("report", help=STEPS["bronze-report"][1])
+
+    silver = groups.add_parser("silver", help="clean data into the Silver layer (Phase 4)")
+    silver_cmds = silver.add_subparsers(dest="command", required=True)
+    silver_cmds.add_parser("build", help=STEPS["silver-build"][1])
+    silver_cmds.add_parser("report", help=STEPS["silver-report"][1])
     return parser
 
 
@@ -131,8 +153,8 @@ def main(argv: list[str] | None = None) -> int:
         names = FULL_PIPELINE
     elif args.group == "data":
         names = DATA_STEPS if args.command == "prepare" else [args.command]
-    else:  # bronze
-        names = [f"bronze-{args.command}"]
+    else:  # bronze or silver
+        names = [f"{args.group}-{args.command}"]
     return _run_steps(names, args)
 
 

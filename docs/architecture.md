@@ -112,17 +112,27 @@ Design rules:
 | | |
 |---|---|
 | **Input** | Bronze tables |
-| **Output** | `data/silver/<table>.parquet` + data-quality report |
+| **Output** | `data/silver/<table>.parquet` (telemetry, machines, errors, maintenance, failures, component_costs) + `silver_quality_report.json` |
+| **Code** | `iiot.silver.telemetry` (typing), `iiot.silver.cleaning` (rules), `iiot.silver.tables` (event/master tables), `iiot.silver.report` (build + proofs) |
 
-Transformations, in order:
-1. **Standardise:** snake_case column names, parsed timestamps, correct numeric types.
-2. **Deduplicate:** one row per `(machine_id, datetime)`.
+Telemetry transformations, in order:
+1. **Standardise:** snake_case names (`machine_id`, `timestamp`), typed columns. Empty and unparseable values are counted separately; rows without a valid timestamp or machine ID are dropped and counted.
+2. **Deduplicate:** one row per `(machine_id, timestamp)`, keeping the first copy in source order. Duplicates whose values differ from the kept row are counted as *conflicting*.
 3. **Validate:** readings outside the physical limits in `config/settings.yaml` → null (a sensor glitch is not a real measurement).
-4. **Stuck sensors:** runs of 3+ identical consecutive readings for one machine and sensor → keep the first value, null the repeats (a frozen sensor is not measuring).
-5. **Regularise:** each machine on a complete hourly grid. Short gaps are interpolated and long gaps stay null.
-6. **Enrich:** join machine master data (model, age) and reference data (plant, line).
+4. **Stuck sensors:** runs of 3+ identical consecutive hourly readings for one machine and sensor → keep the first value, null the repeats (a frozen sensor is not measuring).
+5. **Regularise:** each machine on a complete hourly grid; off-hour timestamps are dropped and counted.
+6. **Fill short gaps:** gaps of ≤ `silver.max_fill_hours` (3) with valid readings on both sides get the mean of the valid readings in a centred `silver.fill_window_hours` (24) window. Longer gaps stay null.
+7. **Quality flags:** each sensor value is marked `ok`, `filled` or `missing`, so later phases can down-weight or exclude filled values.
 
-**Data-quality report:** rows in/out, duplicates removed, values nulled per rule, stuck runs found, gaps filled, and remaining nulls. Quality problems are measured and reported, not silently fixed. A test compares the report with `injection_manifest.json` to prove every injected problem is caught.
+Event and master tables: typed and validated against known machines, error IDs and components (from config and the data contract). Invalid rows are dropped and counted by reason (each row once); a machine without a location is kept but flagged. Machines are enriched with plant, city and production line.
+
+**Data-quality report with two proofs:**
+1. **Manifest check:** the cleaning must find exactly what `injection_manifest.json` says was injected (duplicates, spikes per sensor, stuck runs and repeats).
+2. **Ground-truth check:** every `ok` value must equal the clean original; the error of filled values is recorded next to linear interpolation.
+
+On the real data both pass. A proof is skipped (not failed) when its input file is missing.
+
+**Decision record: gap filling.** The original plan was linear interpolation. Measured against the clean original data, hourly readings in this dataset vary so much from hour to hour that a straight line between neighbours is a poor estimate. The 24 h window mean was about 17% more accurate for every sensor (e.g. volt MAE 12.30 vs 14.74), so it replaced linear interpolation. The report keeps both numbers so the decision stays verifiable.
 
 ### 3.4 Gold Layer: Business & ML Ready
 
@@ -183,7 +193,7 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **Logging** | `iiot.utils.logger.get_logger(__name__)`. Writes to console and `logs/pipeline.log` (rotating, 5 MB × 3). Level is set in config. |
 | **Testing** | pytest. Tests use temporary config copies and never touch real data or logs. |
 | **Code quality** | ruff for linting and formatting (config in `pyproject.toml`). |
-| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
+| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`, `iiot silver build`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
 | **Version control** | Code, documentation and the 5 source CSVs are committed. Generated data (dirty copy, reference data, Bronze/Silver/Gold), models, logs and secrets are excluded via `.gitignore`, because they can be regenerated with one command. |
 
 ---
@@ -198,6 +208,7 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **pandas** for processing | PySpark | The dataset (~1M rows) fits in memory. The layered design could move to Spark later without changing the architecture. |
 | **Public dataset + documented enhancements** | Fully simulated data | Real-world structure gives credibility. Documented enhancements fill the gaps (data-quality issues, costs) transparently. |
 | **YAML config + typed loader** | Constants in code | One place to change thresholds and assumptions. Invalid values fail fast with clear errors. |
+| **Gap filling: 24 h window mean** | Linear interpolation | Measured 17% lower error against the clean original data (see 3.3); filled values are flagged either way |
 | **Time-based train/test split** | Random split | Matches how the model is used in production (predicting the future) and avoids leakage |
 
 ---
@@ -208,10 +219,10 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 |---|---|---|
 | `iiot.config` | ✅ Done | Load and validate settings |
 | `iiot.utils.logger` | ✅ Done | Project-wide logging |
-| `iiot.cli` | ✅ Done | `iiot` command: `run`, `data` and `bronze` groups (later phases add groups) |
+| `iiot.cli` | ✅ Done | `iiot` command: `run`, `data`, `bronze` and `silver` groups (later phases add groups) |
 | `iiot.ingestion` | ✅ Done | Download dataset, data contract, inject quality issues, build reference data |
 | `iiot.bronze` | ✅ Done | Raw → Bronze: loader, idempotent batch pipeline, DuckDB report |
-| `iiot.silver` | ⏳ Phase 4 | Bronze → Silver + data-quality report |
+| `iiot.silver` | ✅ Done | Bronze → Silver: typing, cleaning rules, event/master tables, quality report with proofs |
 | `iiot.gold` | ⏳ Phase 5 | Features, labels, KPIs |
 | `iiot.data_model` | ⏳ Phase 6 | Star schema |
 | `iiot.ml` | ⏳ Phase 7 | Train, evaluate and score models |

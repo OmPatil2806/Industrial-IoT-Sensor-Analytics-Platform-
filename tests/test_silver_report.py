@@ -20,6 +20,7 @@ from iiot.silver.report import (
     check_against_ground_truth,
     check_against_manifest,
     load_ground_truth,
+    show_report,
 )
 from iiot.silver.tables import COST_NUMERIC_COLUMNS
 
@@ -196,3 +197,23 @@ def test_proofs_are_skipped_without_their_inputs(pipeline_run, tmp_path):
     assert report["manifest_check"]["status"] == "skipped"
     assert report["ground_truth_check"]["status"] == "skipped"
     assert report["passed"]  # skipped proofs do not fail the build
+
+
+def test_show_report_reads_latest_report(tmp_path):
+    (tmp_path / REPORT_FILE_NAME).write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-10-07T00:00:00+00:00",
+                "passed": True,
+                "manifest_check": {"status": "skipped", "reason": "x"},
+                "ground_truth_check": {"status": "skipped", "reason": "y"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert show_report(tmp_path)["passed"] is True
+
+
+def test_show_report_without_build_raises(tmp_path):
+    with pytest.raises(FileNotFoundError, match="iiot silver build"):
+        show_report(tmp_path)
