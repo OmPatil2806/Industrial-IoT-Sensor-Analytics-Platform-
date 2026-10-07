@@ -71,6 +71,12 @@ class Silver:
 
 
 @dataclass(frozen=True)
+class Gold:
+    feature_step_hours: int
+    window_hours: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class ComponentCost:
     repair_cost: float
     unplanned_downtime_hours: float
@@ -123,6 +129,7 @@ class Settings:
     sensors: dict[str, SensorLimit]
     data_quality_injection: DataQualityInjection
     silver: Silver
+    gold: Gold
     business: Business
     plant_layout: PlantLayout
     ml: ML
@@ -147,6 +154,13 @@ def _validate(settings: Settings) -> None:
         raise ValueError("silver.max_fill_hours must not be negative")
     if settings.silver.fill_window_hours < 2:
         raise ValueError("silver.fill_window_hours must be at least 2")
+    gold = settings.gold
+    if gold.feature_step_hours < 1:
+        raise ValueError("gold.feature_step_hours must be at least 1")
+    if len(gold.window_hours) < 2 or any(w < 2 for w in gold.window_hours):
+        raise ValueError("gold.window_hours needs at least two windows, each of 2+ hours")
+    if list(gold.window_hours) != sorted(set(gold.window_hours)):
+        raise ValueError("gold.window_hours must be unique and in increasing order")
     business = settings.business
     if business.downtime_cost_per_hour < 0:
         raise ValueError("business.downtime_cost_per_hour must not be negative")
@@ -192,6 +206,10 @@ def load_settings(path: Path | str | None = None) -> Settings:
         sensors={k: SensorLimit(**v) for k, v in raw["sensors"].items()},
         data_quality_injection=DataQualityInjection(**raw["data_quality_injection"]),
         silver=Silver(**raw["silver"]),
+        gold=Gold(
+            feature_step_hours=raw["gold"]["feature_step_hours"],
+            window_hours=tuple(raw["gold"]["window_hours"]),
+        ),
         business=Business(
             **{k: v for k, v in raw["business"].items() if k != "components"},
             components={k: ComponentCost(**v) for k, v in raw["business"]["components"].items()},

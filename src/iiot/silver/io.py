@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pandas as pd
 
 from iiot.config import get_settings
+from iiot.utils.io import write_parquet_atomic
 
 
 def read_bronze(table: str, bronze_dir: Path | None = None) -> pd.DataFrame:
@@ -18,14 +18,6 @@ def read_bronze(table: str, bronze_dir: Path | None = None) -> pd.DataFrame:
 
 
 def write_silver(df: pd.DataFrame, table: str, silver_dir: Path | None = None) -> Path:
-    """Write to a temporary file, then rename, so a failure never leaves a partial table."""
+    """Write a Silver table atomically (a failure never leaves a partial table)."""
     silver_dir = Path(silver_dir or get_settings().paths.silver)
-    silver_dir.mkdir(parents=True, exist_ok=True)
-    out = silver_dir / f"{table}.parquet"
-    tmp = out.with_name(f".{out.name}.tmp")
-    try:
-        df.to_parquet(tmp, index=False, compression="zstd")
-        os.replace(tmp, out)
-    finally:
-        tmp.unlink(missing_ok=True)
-    return out
+    return write_parquet_atomic(df, silver_dir / f"{table}.parquet")

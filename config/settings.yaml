@@ -65,6 +65,13 @@ silver:
   fill_window_hours: 24      # fill value = mean of valid readings in this window around the gap
 
 # -------------------------------------------------------------------
+# Gold layer features (Phase 5)
+# -------------------------------------------------------------------
+gold:
+  feature_step_hours: 3        # one feature row per machine every N hours
+  window_hours: [3, 24]        # rolling windows (looking back only) for sensor features
+
+# -------------------------------------------------------------------
 # Business assumptions (used by the business-insights layer)
 # Illustrative values - replace with real plant figures if available.
 # -------------------------------------------------------------------
