@@ -13,6 +13,9 @@ views, so the SQL never needs file paths:
     src_error_types       allowed error IDs from the raw data contract
     src_dates             every calendar day that appears in the data
 
+Scripts 01-05 create the dimension tables, 06-10 the fact tables and 11+ the
+analytical views (v_*), which are saved queries over the tables and cost no space.
+
 The database is built in a temporary file and then swapped in, so a failed build
 never leaves a half-built warehouse. If another program (e.g. DBeaver) has the
 warehouse open, the swap fails with a clear message to close it.
@@ -126,6 +129,16 @@ def table_counts(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
     return {n: con.execute(f'SELECT count(*) FROM "{n}"').fetchone()[0] for n in names}
 
 
+def view_names(con: duckdb.DuckDBPyConnection) -> list[str]:
+    return [
+        r[0]
+        for r in con.execute(
+            "SELECT view_name FROM duckdb_views() WHERE NOT internal AND NOT temporary "
+            "ORDER BY view_name"
+        ).fetchall()
+    ]
+
+
 def build_warehouse(
     silver_dir: Path | None = None,
     path: Path | None = None,
@@ -152,6 +165,7 @@ def build_warehouse(
                     raise RuntimeError(f"{script.name} failed: {e}") from e
                 logger.debug("Ran %s", script.name)
             counts = table_counts(con)
+            views = view_names(con)
         try:
             os.replace(tmp, path)
         except PermissionError as e:
@@ -162,7 +176,9 @@ def build_warehouse(
     finally:
         tmp.unlink(missing_ok=True)
 
-    logger.info("Warehouse built: %d tables -> %s", len(counts), path)
+    logger.info("Warehouse built: %d tables, %d views -> %s", len(counts), len(views), path)
     for name, rows in counts.items():
-        logger.info("  %-20s %10s rows", name, f"{rows:,}")
+        logger.info("  %-24s %10s rows", name, f"{rows:,}")
+    for name in views:
+        logger.info("  %-24s %10s", name, "view")
     return counts
