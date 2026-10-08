@@ -31,6 +31,7 @@ class Paths:
     bronze: Path
     silver: Path
     gold: Path
+    warehouse: Path
     models: Path
     reports: Path
     logs: Path

@@ -16,6 +16,9 @@ iiot = "iiot.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+iiot = ["model/sql/*.sql"]   # the warehouse SQL scripts ship with the package
+
 # ---------------------------------------------------------------
 # Code quality: ruff (linter + formatter)
 # Run: ruff check .   and   ruff format .

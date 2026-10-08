@@ -12,6 +12,7 @@ paths:
   bronze: data/bronze
   silver: data/silver
   gold: data/gold
+  warehouse: data/warehouse
   models: models
   reports: reports
   logs: logs
