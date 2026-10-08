@@ -6,6 +6,9 @@ views, so the SQL never needs file paths:
 
     src_machines          Silver machines (model, age, plant, line)
     src_component_costs   Silver component costs
+    src_telemetry         Silver cleaned telemetry (with quality flags)
+    src_failures, src_maintenance, src_errors   Silver events
+    src_kpi_machine_monthly                     Gold KPIs per machine and month
     src_sensors           sensor names and valid ranges from config
     src_error_types       allowed error IDs from the raw data contract
     src_dates             every calendar day that appears in the data
@@ -37,7 +40,15 @@ logger = get_logger("iiot.model.warehouse")
 
 SQL_DIR = Path(__file__).parent / "sql"
 WAREHOUSE_FILE_NAME = "iiot.duckdb"
-SILVER_SOURCES = {"src_machines": "machines", "src_component_costs": "component_costs"}
+SILVER_SOURCES = {
+    "src_machines": "machines",
+    "src_component_costs": "component_costs",
+    "src_telemetry": "telemetry",
+    "src_failures": "failures",
+    "src_maintenance": "maintenance",
+    "src_errors": "errors",
+}
+GOLD_SOURCES = {"src_kpi_machine_monthly": "kpi_machine_monthly"}
 DATE_SOURCES = ("telemetry", "errors", "maintenance", "failures")
 
 
@@ -61,18 +72,24 @@ def _sql_literal(path: Path) -> str:
     return "'" + path.as_posix().replace("'", "''") + "'"
 
 
-def _require(path: Path) -> Path:
+def _require(path: Path, layer: str = "silver") -> Path:
     if not path.exists():
-        raise FileNotFoundError(f"{path} not found. Run `iiot silver build` first.")
+        raise FileNotFoundError(f"{path} not found. Run `iiot {layer} build` first.")
     return path
 
 
-def register_sources(con: duckdb.DuckDBPyConnection, silver_dir: Path) -> None:
+def register_sources(con: duckdb.DuckDBPyConnection, silver_dir: Path, gold_dir: Path) -> None:
     """Expose every input to the SQL scripts as a `src_*` view."""
     settings = get_settings()
-    for view, table in SILVER_SOURCES.items():
-        path = _require(silver_dir / f"{table}.parquet")
-        con.execute(f"CREATE TEMP VIEW {view} AS SELECT * FROM read_parquet({_sql_literal(path)})")
+    for sources, folder, layer in (
+        (SILVER_SOURCES, silver_dir, "silver"),
+        (GOLD_SOURCES, gold_dir, "gold"),
+    ):
+        for view, table in sources.items():
+            path = _require(folder / f"{table}.parquet", layer)
+            con.execute(
+                f"CREATE TEMP VIEW {view} AS SELECT * FROM read_parquet({_sql_literal(path)})"
+            )
 
     sensors = pd.DataFrame(
         [
@@ -113,10 +130,12 @@ def build_warehouse(
     silver_dir: Path | None = None,
     path: Path | None = None,
     sql_dir: Path = SQL_DIR,
+    gold_dir: Path | None = None,
 ) -> dict[str, int]:
     """Run every SQL script into a fresh warehouse file. Returns rows per table."""
     settings = get_settings()
     silver_dir = Path(silver_dir or settings.paths.silver)
+    gold_dir = Path(gold_dir or settings.paths.gold)
     path = Path(path or warehouse_path())
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.building")
@@ -125,7 +144,7 @@ def build_warehouse(
 
     try:
         with duckdb.connect(str(tmp)) as con:
-            register_sources(con, silver_dir)
+            register_sources(con, silver_dir, gold_dir)
             for script in sql_scripts(sql_dir):
                 try:
                     con.execute(script.read_text(encoding="utf-8"))
