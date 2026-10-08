@@ -2,7 +2,7 @@
 
 An end-to-end **Data Engineering + Machine Learning** platform that turns raw industrial sensor data into early failure warnings and business decisions, moving a plant from **reactive** to **predictive maintenance**.
 
-> **Status:** 🚧 In development. Phases 1–4 complete: project setup, data acquisition, Bronze and Silver layers. See the **Roadmap** section below for progress.
+> **Status:** 🚧 In development. Phases 1–5 complete: project setup, data acquisition, Bronze, Silver and Gold layers. See the **Roadmap** section below for progress.
 
 ---
 
@@ -89,10 +89,11 @@ The project follows a **Medallion Architecture** (Bronze → Silver → Gold), f
 - **Proven, not assumed:** the quality report checks the cleaning against the injection manifest and the clean original data.
 
 ### 4️⃣ Gold Layer: Business & ML Ready
-- **Aggregations:** hourly / daily mean, min, max, std per machine and sensor.
-- **ML features:** rolling windows (e.g. 3h, 24h), trends, error counts, time since last maintenance.
-- **Labels:** `fails_within_24h`, `remaining_useful_life_hours`.
-- **KPIs:** uptime, downtime, MTBF, MTTR, availability.
+- **ML features** (one row per machine every 3 h): 3 h / 24 h rolling sensor statistics, trends, data-quality shares, error counts, hours since each component was replaced, machine attributes. They **only look backwards**.
+- **Labels:** `fails_within_24h`, one label per component, `failed_component` and `hours_to_failure` (remaining useful life). They **only look forwards**.
+- **ML dataset** with a leakage-safe time-based train/test split.
+- **KPIs** per machine, line and plant by month: failures, MTBF, MTTR, downtime, availability, cost.
+- **Checked:** a leakage test on the real data, labels recomputed independently, and KPIs reconciled with Silver.
 
 ### 5️⃣ Data Model: Star Schema
 
@@ -189,7 +190,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 │   ├── ingestion/           # download, data contract, data-quality injection, reference data
 │   ├── bronze/              # Bronze loader, batch pipeline, DuckDB report
 │   ├── silver/              # typing, cleaning rules, event/master tables, quality report
-│   ├── gold/                # (Phase 5)
+│   ├── gold/                # features, labels, ML dataset, KPIs, quality checks
 │   ├── data_model/          # (Phase 6)
 │   └── ml/                  # (Phase 7)
 ├── dashboard/               # (Phase 8) Streamlit app
@@ -212,7 +213,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 - [x] **Phase 2: Sensor data acquisition:** download, data contract, EDA, data-quality injection, reference data
 - [x] **Phase 3: Bronze layer:** raw → Parquet with lineage metadata, idempotent reloads, DuckDB verification
 - [x] **Phase 4: Silver layer:** typing, cleaning rules, quality flags, validated tables, data-quality report with proofs
-- [ ] **Phase 5: Gold layer:** aggregates, features, labels, KPIs
+- [x] **Phase 5: Gold layer:** features, labels, ML dataset, KPIs, leakage and reconciliation checks
 - [ ] **Phase 6: Data model:** star schema (facts & dimensions)
 - [ ] **Phase 7: Machine learning:** anomaly detection, failure prediction, RUL
 - [ ] **Phase 8: Dashboard:** Streamlit multi-page app
@@ -299,7 +300,7 @@ Generated files are reproducible (fixed seeds in `config/settings.yaml`) and are
 ```bash
 iiot run
 ```
-Runs every step built so far, in order: data preparation (4 steps), Bronze ingest and Bronze report, then the Silver build. On the real data the whole run takes about 20–25 seconds. It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
+Runs every step built so far, in order: data preparation (4 steps), Bronze ingest and Bronze report, the Silver build and the Gold build. On the real data the whole run takes about 35 seconds. It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
 
 ### Explore the data
 Open [`notebooks/01_eda_raw_data.ipynb`](notebooks/01_eda_raw_data.ipynb) in VS Code or Jupyter, select the `.venv` kernel and run all cells.
@@ -384,6 +385,58 @@ Thresholds live in the `silver` section of `config/settings.yaml`.
 | rotate | 40.68 | 48.58 |
 | pressure | 8.23 | 9.89 |
 | vibration | 4.15 | 4.95 |
+
+---
+
+## 🥇 Gold Layer (Phase 5)
+
+```bash
+iiot gold build     # build features, labels, ML dataset and KPIs, then run all checks
+iiot gold report    # show the latest Gold report (PASSED / FAILED)
+```
+
+### Tables (in `data/gold/`)
+| Table | Rows (real data) | Contents |
+|---|---|---|
+| `sensor_features` | 291,300 | One row per machine every 3 h: per sensor, mean and std over the last 3 h and 24 h, trend (3 h − 24 h mean), share of filled / missing readings |
+| `event_features` | 291,300 | Error counts per type in the last 24 h, hours since each component was replaced, model, age, plant, line |
+| `labels` | 290,500 | `fails_within_24h`, `comp1..4_fails_within_24h`, `failed_component`, `hours_to_failure` |
+| `ml_dataset` | 289,700 | 42 features + labels + `split` (train / test) |
+| `kpi_machine_monthly`, `kpi_machine_total`, `kpi_line_monthly`, `kpi_plant_monthly` | 1,200 / 100 / 60 / 24 | Failures, planned maintenances, downtime, availability, MTBF, MTTR, cost |
+
+### No peeking into the future
+- **Features** at time *t* only use readings and events at or before *t*.
+- **Labels** look at failures strictly after *t*, up to *t* + 24 h.
+- **Train** rows end 24 h before the split date (1 Oct 2015), so no training label looks into the **test** period.
+- Rows whose label window passes the end of the data are dropped, because their labels can't be known.
+
+### ML dataset (real data)
+| Split | Rows | Failure in the next 24 h |
+|---|---|---|
+| train (to 29 Sep 2015) | 216,600 | 1.95% |
+| test (from 1 Oct 2015) | 73,100 | 1.85% |
+
+### Fleet KPIs, 2015 (real data)
+| KPI | Value |
+|---|---|
+| Failure events | 719 (761 component failures) |
+| Planned maintenances | 1,733 (failure repairs not double-counted) |
+| Availability | 98.73% |
+| MTBF / MTTR | 1,202 h / 9.3 h |
+
+Costs use the illustrative assumptions in `config/settings.yaml`.
+
+### Checks (`data/gold/gold_report.json`), all passing on the real data
+| Check | What it verifies |
+|---|---|
+| `no_leakage` | Changing all readings and events after a cut-off leaves every earlier feature unchanged |
+| `labels_correct` | The target, recomputed independently, matches every row (0 mismatches out of 290,500) |
+| `split_integrity` | Train label windows end before the split; test rows start on it |
+| `label_balance` | Both splits contain failures |
+| `feature_completeness` | No feature is empty in more than 5% of rows |
+| `kpi_reconciliation` | KPI failure counts equal Silver; machine totals equal the sum of their months |
+
+Each check also has a test that feeds it deliberately broken data, for example a feature that peeks one hour ahead, to prove it can fail.
 
 ---
 

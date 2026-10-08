@@ -136,15 +136,28 @@ On the real data both pass. A proof is skipped (not failed) when its input file 
 
 ### 3.4 Gold Layer: Business & ML Ready
 
-| Table | Purpose |
+| | |
 |---|---|
-| `features` | One row per machine × hour. Rolling statistics (e.g. 3h / 24h mean and std), trends, error counts, time since last maintenance, and labels. |
-| KPI tables | Uptime, downtime, MTBF, MTTR and availability per machine / model / line |
-| Star schema | See 3.5 |
+| **Input** | Silver tables |
+| **Output** | `sensor_features`, `event_features`, `labels`, `ml_dataset`, `kpi_machine_monthly`, `kpi_machine_total`, `kpi_line_monthly`, `kpi_plant_monthly` (Parquet) + `gold_report.json` |
+| **Code** | `iiot.gold.sensor_features`, `iiot.gold.event_features`, `iiot.gold.labels`, `iiot.gold.kpis`, `iiot.gold.report` (build + checks) |
 
-**Labels:**
-- `fails_within_24h`: 1 if a failure occurs in the next `ml.prediction_horizon_hours`.
-- `remaining_useful_life_hours`: hours until the next failure.
+**Grain:** one feature row per machine every `gold.feature_step_hours` (3) hours, after a warm-up of one longest window. Sensors change slowly, so this keeps the signal while cutting rows by 3×.
+
+**Features (look backward only):**
+- Sensors, per window in `gold.window_hours` (3 h, 24 h): mean and std; trend = 3 h mean − 24 h mean; share of filled / missing readings in the last 24 h (from the Silver quality flags). A statistic needs at least half its window.
+- Events: error counts per type and in total in the last 24 h (`t − 24h < time ≤ t`); hours since each component was last replaced; model, age, plant, line. Event times off the hour are rounded *up*.
+
+**Labels (look forward only), horizon H = `ml.prediction_horizon_hours` (24 h), failures with `t < time ≤ t + H`:**
+- `fails_within_24h` (main target) and one label per component, because two components can fail together (42 of 719 failure events).
+- `failed_component` (next failure, e.g. `comp2+comp4`) and `hours_to_failure` (remaining useful life).
+- Rows whose horizon passes the end of the data are dropped (labels unknowable).
+
+**ML dataset:** features + labels with `split`: train if `t + H < ml.train_end_date`, test if `t ≥ ml.train_end_date`; rows in between are dropped so training labels never reach the test period.
+
+**KPIs:** a failure event groups the component failures of one machine at one time (downtime = longest repair, since repairs run in parallel; cost = sum). A maintenance record matching a failure (same machine, time, component) is that failure's repair and is not counted again as planned maintenance (743 such records). The KPI period ends at midnight of the last day, so the 6 trailing hours never form a separate month. Aggregates sum counts, hours and costs and recompute the ratios.
+
+**Checks (`gold_report.json`):** `no_leakage` (change all data after a cut-off placed on a feature row; earlier features must not change), `labels_correct` (independent recomputation), `split_integrity`, `label_balance`, `feature_completeness` (≤ 5% empty), `kpi_reconciliation`. Each check has a test that feeds it broken data to prove it can fail. Writing those tests revealed that a cut-off between feature rows let a 1-hour look-ahead slip through, so the cut-off now sits on a feature row.
 
 ### 3.5 Data Model: Star Schema
 
@@ -193,7 +206,7 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **Logging** | `iiot.utils.logger.get_logger(__name__)`. Writes to console and `logs/pipeline.log` (rotating, 5 MB × 3). Level is set in config. |
 | **Testing** | pytest. Tests use temporary config copies and never touch real data or logs. |
 | **Code quality** | ruff for linting and formatting (config in `pyproject.toml`). |
-| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`, `iiot silver build`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
+| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`, `iiot silver build`, `iiot gold build`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
 | **Version control** | Code, documentation and the 5 source CSVs are committed. Generated data (dirty copy, reference data, Bronze/Silver/Gold), models, logs and secrets are excluded via `.gitignore`, because they can be regenerated with one command. |
 
 ---
@@ -208,6 +221,8 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **pandas** for processing | PySpark | The dataset (~1M rows) fits in memory. The layered design could move to Spark later without changing the architecture. |
 | **Public dataset + documented enhancements** | Fully simulated data | Real-world structure gives credibility. Documented enhancements fill the gaps (data-quality issues, costs) transparently. |
 | **YAML config + typed loader** | Constants in code | One place to change thresholds and assumptions. Invalid values fail fast with clear errors. |
+| **Gold grain: every 3 h** | Every hour | 3× fewer rows with little signal lost, since sensors change slowly; much faster training |
+| **Leakage-safe split with a gap** | Plain date split | Rows whose 24 h label window crosses the split date would leak test failures into training, so they are dropped |
 | **Gap filling: 24 h window mean** | Linear interpolation | Measured 17% lower error against the clean original data (see 3.3); filled values are flagged either way |
 | **Time-based train/test split** | Random split | Matches how the model is used in production (predicting the future) and avoids leakage |
 
@@ -219,11 +234,11 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 |---|---|---|
 | `iiot.config` | ✅ Done | Load and validate settings |
 | `iiot.utils.logger` | ✅ Done | Project-wide logging |
-| `iiot.cli` | ✅ Done | `iiot` command: `run`, `data`, `bronze` and `silver` groups (later phases add groups) |
+| `iiot.cli` | ✅ Done | `iiot` command: `run`, `data`, `bronze`, `silver` and `gold` groups (later phases add groups) |
 | `iiot.ingestion` | ✅ Done | Download dataset, data contract, inject quality issues, build reference data |
 | `iiot.bronze` | ✅ Done | Raw → Bronze: loader, idempotent batch pipeline, DuckDB report |
 | `iiot.silver` | ✅ Done | Bronze → Silver: typing, cleaning rules, event/master tables, quality report with proofs |
-| `iiot.gold` | ⏳ Phase 5 | Features, labels, KPIs |
+| `iiot.gold` | ✅ Done | Sensor and event features, labels, ML dataset, KPIs, quality checks |
 | `iiot.data_model` | ⏳ Phase 6 | Star schema |
 | `iiot.ml` | ⏳ Phase 7 | Train, evaluate and score models |
 | `dashboard/` | ⏳ Phase 8 | Streamlit app |

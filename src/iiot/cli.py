@@ -1,7 +1,7 @@
 """Command-line interface: `iiot <group> <command>`.
 
 Examples:
-    iiot run                     # full pipeline: data preparation -> Bronze -> Silver
+    iiot run                     # full pipeline: data preparation -> Bronze -> Silver -> Gold
     iiot data prepare            # download -> validate -> inject issues -> reference data
     iiot data download --force   # re-download the Kaggle dataset
     iiot data validate           # run the raw data contract only
@@ -9,6 +9,8 @@ Examples:
     iiot bronze report           # verify Bronze tables with DuckDB
     iiot silver build            # clean data into Silver and prove the cleaning worked
     iiot silver report           # show the latest Silver quality report
+    iiot gold build              # features, labels, ML dataset, KPIs + quality checks
+    iiot gold report             # show the latest Gold report
 
 Also available as `python -m iiot ...`.
 """
@@ -22,6 +24,7 @@ from collections.abc import Callable
 from iiot.bronze import pipeline as bronze_pipeline
 from iiot.bronze import report as bronze_report
 from iiot.bronze.ingest import BronzeError
+from iiot.gold import report as gold_report
 from iiot.ingestion import download, inject_issues, reference_data, validate_raw
 from iiot.silver import report as silver_report
 from iiot.utils.logger import get_logger
@@ -69,6 +72,16 @@ def _silver_report(args: argparse.Namespace) -> None:
         raise StepFailed("The latest Silver quality report did not pass.")
 
 
+def _gold_build(args: argparse.Namespace) -> None:
+    if not gold_report.build_gold()["passed"]:
+        raise StepFailed("Gold checks failed - see the FAIL lines above.")
+
+
+def _gold_report(args: argparse.Namespace) -> None:
+    if not gold_report.show_report()["passed"]:
+        raise StepFailed("The latest Gold report did not pass.")
+
+
 Step = tuple[Callable[[argparse.Namespace], None], str]
 
 # Every pipeline step, keyed by name. Groups and `iiot run` pick steps from here.
@@ -81,10 +94,12 @@ STEPS: dict[str, Step] = {
     "bronze-report": (_bronze_report, "verify Bronze tables with DuckDB"),
     "silver-build": (_silver_build, "clean Bronze into Silver tables and prove the cleaning"),
     "silver-report": (_silver_report, "show the latest Silver quality report"),
+    "gold-build": (_gold_build, "build features, labels, ML dataset and KPIs, and check them"),
+    "gold-report": (_gold_report, "show the latest Gold report"),
 }
 DATA_STEPS = ["download", "validate", "inject", "reference"]
 BRONZE_STEPS = ["bronze-ingest", "bronze-report"]
-FULL_PIPELINE = DATA_STEPS + BRONZE_STEPS + ["silver-build"]
+FULL_PIPELINE = DATA_STEPS + BRONZE_STEPS + ["silver-build", "gold-build"]
 
 
 def _run_steps(names: list[str], args: argparse.Namespace) -> int:
@@ -113,7 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     groups = parser.add_subparsers(dest="group", required=True)
 
     run = groups.add_parser(
-        "run", help="run the full pipeline (data preparation -> Bronze -> Silver)"
+        "run", help="run the full pipeline (data preparation -> Bronze -> Silver -> Gold)"
     )
     run.add_argument("--force-download", action="store_true", help="re-download the dataset")
     run.add_argument("--force-bronze", action="store_true", help="reload every Bronze table")
@@ -144,6 +159,11 @@ def build_parser() -> argparse.ArgumentParser:
     silver_cmds = silver.add_subparsers(dest="command", required=True)
     silver_cmds.add_parser("build", help=STEPS["silver-build"][1])
     silver_cmds.add_parser("report", help=STEPS["silver-report"][1])
+
+    gold = groups.add_parser("gold", help="build ML features, labels and KPIs (Phase 5)")
+    gold_cmds = gold.add_subparsers(dest="command", required=True)
+    gold_cmds.add_parser("build", help=STEPS["gold-build"][1])
+    gold_cmds.add_parser("report", help=STEPS["gold-report"][1])
     return parser
 
 
@@ -153,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         names = FULL_PIPELINE
     elif args.group == "data":
         names = DATA_STEPS if args.command == "prepare" else [args.command]
-    else:  # bronze or silver
+    else:  # bronze, silver or gold
         names = [f"{args.group}-{args.command}"]
     return _run_steps(names, args)
 

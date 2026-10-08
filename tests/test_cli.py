@@ -14,6 +14,7 @@ def calls(monkeypatch):
     class Calls(list):
         report: type
         silver_passed: bool
+        gold_passed: bool
 
     recorded = Calls()
 
@@ -48,7 +49,18 @@ def calls(monkeypatch):
         "show_report",
         lambda: recorded.append("silver-report") or {"passed": recorded.silver_passed},
     )
+    monkeypatch.setattr(
+        cli.gold_report,
+        "build_gold",
+        lambda: recorded.append("gold-build") or {"passed": recorded.gold_passed},
+    )
+    monkeypatch.setattr(
+        cli.gold_report,
+        "show_report",
+        lambda: recorded.append("gold-report") or {"passed": recorded.gold_passed},
+    )
     recorded.silver_passed = True
+    recorded.gold_passed = True
     recorded.report = Report
     return recorded
 
@@ -117,6 +129,7 @@ def test_run_executes_the_full_pipeline_in_order(calls):
         "bronze-ingest(force=False)",
         "bronze-report",
         "silver-build",
+        "gold-build",
     ]
 
 
@@ -175,7 +188,7 @@ def test_failed_silver_checks_return_error(calls, command):
 def test_failed_silver_build_fails_the_full_run(calls):
     calls.silver_passed = False
     assert cli.main(["run"]) == 1
-    assert calls[-1] == "silver-build"
+    assert calls[-1] == "silver-build"  # Gold is not built on top of failed Silver
 
 
 def test_silver_report_without_build_returns_error(calls, monkeypatch):
@@ -184,3 +197,24 @@ def test_silver_report_without_build_returns_error(calls, monkeypatch):
 
     monkeypatch.setattr(cli.silver_report, "show_report", missing)
     assert cli.main(["silver", "report"]) == 1
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [(["build"], ["gold-build"]), (["report"], ["gold-report"])],
+)
+def test_gold_commands(calls, command, expected):
+    assert cli.main(["gold", *command]) == 0
+    assert calls == expected
+
+
+@pytest.mark.parametrize("command", ["build", "report"])
+def test_failed_gold_checks_return_error(calls, command):
+    calls.gold_passed = False
+    assert cli.main(["gold", command]) == 1
+
+
+def test_failed_gold_build_fails_the_full_run(calls):
+    calls.gold_passed = False
+    assert cli.main(["run"]) == 1
+    assert calls[-1] == "gold-build"
