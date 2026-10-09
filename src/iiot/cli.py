@@ -1,7 +1,7 @@
 """Command-line interface: `iiot <group> <command>`.
 
 Examples:
-    iiot run                     # full pipeline: data preparation -> Bronze -> Silver -> Gold
+    iiot run                     # full pipeline: data -> Bronze -> Silver -> Gold -> warehouse
     iiot data prepare            # download -> validate -> inject issues -> reference data
     iiot data download --force   # re-download the Kaggle dataset
     iiot data validate           # run the raw data contract only
@@ -11,6 +11,8 @@ Examples:
     iiot silver report           # show the latest Silver quality report
     iiot gold build              # features, labels, ML dataset, KPIs + quality checks
     iiot gold report             # show the latest Gold report
+    iiot model build             # build the DuckDB star-schema warehouse + model checks
+    iiot model report            # show the latest model report
 
 Also available as `python -m iiot ...`.
 """
@@ -26,6 +28,8 @@ from iiot.bronze import report as bronze_report
 from iiot.bronze.ingest import BronzeError
 from iiot.gold import report as gold_report
 from iiot.ingestion import download, inject_issues, reference_data, validate_raw
+from iiot.model import report as model_report
+from iiot.model.warehouse import WarehouseLockedError
 from iiot.silver import report as silver_report
 from iiot.utils.logger import get_logger
 
@@ -82,6 +86,16 @@ def _gold_report(args: argparse.Namespace) -> None:
         raise StepFailed("The latest Gold report did not pass.")
 
 
+def _model_build(args: argparse.Namespace) -> None:
+    if not model_report.build_model()["passed"]:
+        raise StepFailed("Model checks failed - see the FAIL lines above.")
+
+
+def _model_report(args: argparse.Namespace) -> None:
+    if not model_report.show_report()["passed"]:
+        raise StepFailed("The latest model report did not pass.")
+
+
 Step = tuple[Callable[[argparse.Namespace], None], str]
 
 # Every pipeline step, keyed by name. Groups and `iiot run` pick steps from here.
@@ -96,10 +110,12 @@ STEPS: dict[str, Step] = {
     "silver-report": (_silver_report, "show the latest Silver quality report"),
     "gold-build": (_gold_build, "build features, labels, ML dataset and KPIs, and check them"),
     "gold-report": (_gold_report, "show the latest Gold report"),
+    "model-build": (_model_build, "build the star-schema warehouse and check it"),
+    "model-report": (_model_report, "show the latest model report"),
 }
 DATA_STEPS = ["download", "validate", "inject", "reference"]
 BRONZE_STEPS = ["bronze-ingest", "bronze-report"]
-FULL_PIPELINE = DATA_STEPS + BRONZE_STEPS + ["silver-build", "gold-build"]
+FULL_PIPELINE = DATA_STEPS + BRONZE_STEPS + ["silver-build", "gold-build", "model-build"]
 
 
 def _run_steps(names: list[str], args: argparse.Namespace) -> int:
@@ -110,7 +126,13 @@ def _run_steps(names: list[str], args: argparse.Namespace) -> int:
         start = time.perf_counter()
         try:
             func(args)
-        except (StepFailed, download.DownloadError, BronzeError, FileNotFoundError) as e:
+        except (
+            StepFailed,
+            download.DownloadError,
+            BronzeError,
+            FileNotFoundError,
+            WarehouseLockedError,
+        ) as e:
             logger.error("Step '%s' failed: %s", name, e)
             if i < len(names):
                 logger.error("Stopped. Remaining steps not run: %s", ", ".join(names[i:]))
@@ -128,7 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     groups = parser.add_subparsers(dest="group", required=True)
 
     run = groups.add_parser(
-        "run", help="run the full pipeline (data preparation -> Bronze -> Silver -> Gold)"
+        "run", help="run the full pipeline (data -> Bronze -> Silver -> Gold -> warehouse)"
     )
     run.add_argument("--force-download", action="store_true", help="re-download the dataset")
     run.add_argument("--force-bronze", action="store_true", help="reload every Bronze table")
@@ -164,6 +186,11 @@ def build_parser() -> argparse.ArgumentParser:
     gold_cmds = gold.add_subparsers(dest="command", required=True)
     gold_cmds.add_parser("build", help=STEPS["gold-build"][1])
     gold_cmds.add_parser("report", help=STEPS["gold-report"][1])
+
+    model = groups.add_parser("model", help="build and check the DuckDB warehouse (Phase 6)")
+    model_cmds = model.add_subparsers(dest="command", required=True)
+    model_cmds.add_parser("build", help=STEPS["model-build"][1])
+    model_cmds.add_parser("report", help=STEPS["model-report"][1])
     return parser
 
 
@@ -173,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         names = FULL_PIPELINE
     elif args.group == "data":
         names = DATA_STEPS if args.command == "prepare" else [args.command]
-    else:  # bronze, silver or gold
+    else:  # bronze, silver, gold or model
         names = [f"{args.group}-{args.command}"]
     return _run_steps(names, args)
 

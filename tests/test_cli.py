@@ -15,6 +15,7 @@ def calls(monkeypatch):
         report: type
         silver_passed: bool
         gold_passed: bool
+        model_passed: bool
 
     recorded = Calls()
 
@@ -59,7 +60,18 @@ def calls(monkeypatch):
         "show_report",
         lambda: recorded.append("gold-report") or {"passed": recorded.gold_passed},
     )
+    monkeypatch.setattr(
+        cli.model_report,
+        "build_model",
+        lambda: recorded.append("model-build") or {"passed": recorded.model_passed},
+    )
+    monkeypatch.setattr(
+        cli.model_report,
+        "show_report",
+        lambda: recorded.append("model-report") or {"passed": recorded.model_passed},
+    )
     recorded.silver_passed = True
+    recorded.model_passed = True
     recorded.gold_passed = True
     recorded.report = Report
     return recorded
@@ -130,6 +142,7 @@ def test_run_executes_the_full_pipeline_in_order(calls):
         "bronze-report",
         "silver-build",
         "gold-build",
+        "model-build",
     ]
 
 
@@ -218,3 +231,32 @@ def test_failed_gold_build_fails_the_full_run(calls):
     calls.gold_passed = False
     assert cli.main(["run"]) == 1
     assert calls[-1] == "gold-build"
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [(["build"], ["model-build"]), (["report"], ["model-report"])],
+)
+def test_model_commands(calls, command, expected):
+    assert cli.main(["model", *command]) == 0
+    assert calls == expected
+
+
+@pytest.mark.parametrize("command", ["build", "report"])
+def test_failed_model_checks_return_error(calls, command):
+    calls.model_passed = False
+    assert cli.main(["model", command]) == 1
+
+
+def test_failed_model_build_fails_the_full_run(calls):
+    calls.model_passed = False
+    assert cli.main(["run"]) == 1
+    assert calls[-1] == "model-build"
+
+
+def test_locked_warehouse_returns_error_code(calls, monkeypatch):
+    def locked():
+        raise cli.WarehouseLockedError("iiot.duckdb is open in DBeaver")
+
+    monkeypatch.setattr(cli.model_report, "build_model", locked)
+    assert cli.main(["model", "build"]) == 1

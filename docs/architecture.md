@@ -40,15 +40,21 @@ This document explains **how** the Industrial IoT Sensor Analytics Platform is b
         │  aggregate · engineer features · label · compute KPIs
         ▼
  ┌─────────────────────────────────────────────────────────────────┐
- │ data/gold/       feature table, KPI tables, star schema         │
+ │ data/gold/       feature table, ML dataset, KPI tables          │
  └─────────────────────────────────────────────────────────────────┘
-        │                                  │
-        ▼                                  ▼
-  Machine learning ── predictions ──► fact_predictions
-  (models/)                                │
-                                           ▼
-                                 Dashboard & business insights
-                                 (dashboard/, reports/)
+        │  model: SQL scripts → dimensions, facts, views
+        ▼
+ ┌─────────────────────────────────────────────────────────────────┐
+ │ data/warehouse/  iiot.duckdb star schema + model report         │
+ └─────────────────────────────────────────────────────────────────┘
+        │                                  ▲
+        ▼                                  │ predictions (Phase 7)
+  Machine learning ────────────────────────┘
+  (models/)
+        │
+        ▼
+  Dashboard & business insights
+  (dashboard/, reports/)
 ```
 
 ---
@@ -161,18 +167,33 @@ On the real data both pass. A proof is skipped (not failed) when its input file 
 
 ### 3.5 Data Model: Star Schema
 
-| Table | Type | Grain |
-|---|---|---|
-| `dim_machine` | Dimension | machine (model, age, plant, line) |
-| `dim_date` | Dimension | calendar day |
-| `dim_sensor` | Dimension | sensor (name, unit, limits) |
-| `dim_component` | Dimension | component (repair cost) |
-| `fact_sensor_hourly` | Fact | machine × hour × sensor statistics |
-| `fact_errors` | Fact | error event |
-| `fact_maintenance` | Fact | failure / replacement event (downtime, cost) |
-| `fact_predictions` | Fact | machine × hour model outputs |
+A DuckDB warehouse in one file, `data/warehouse/iiot.duckdb`, built by `iiot model build` (`iiot.model`). The tables are defined in plain SQL files in `src/iiot/model/sql/`, run in name order: `01–05` dimensions, `06–10` facts, `11–14` views. The builder exposes Silver and Gold as `src_*` views, so the SQL never contains file paths.
 
-**Why a star schema:** it is the standard model for analytics. It keeps dashboard queries simple (facts joined to small dimensions), makes business questions easy to express in SQL, and separates *what happened* (facts) from *descriptive context* (dimensions). DuckDB queries the Parquet files directly, so no database server is needed.
+| Table | Type | Grain | Rows (real data) |
+|---|---|---|---|
+| `dim_machine` | Dimension | machine (model, age, plant, line) | 100 |
+| `dim_date` | Dimension | calendar day, every day that appears in the data | 580 |
+| `dim_sensor` | Dimension | sensor (valid range) | 4 |
+| `dim_component` | Dimension | component (repair and downtime costs) | 4 |
+| `dim_error_type` | Dimension | error code | 5 |
+| `fact_sensor_reading` | Fact | machine × hour × sensor (value, quality flag) | 3,504,400 |
+| `fact_failure` | Fact | component failure (downtime, cost, components in the same event) | 761 |
+| `fact_maintenance` | Fact | component replacement (`planned` / `failure_repair`) | 3,286 |
+| `fact_error` | Fact | error event | 3,919 |
+| `fact_machine_month` | Fact | machine × month (Gold KPIs) | 1,200 |
+| `fact_predictions` | Fact | machine × time model outputs | Phase 7 |
+
+**Views:** `v_fleet_monthly`, `v_machine_health`, `v_component_reliability`, `v_line_performance`. Ratios are recomputed from summed hours and counts (never averaged), and events are limited to the same analysis period as the Gold KPIs, so the views and the KPIs agree. `docs/example_queries.sql` holds 10 tested business queries; `notebooks/02_explore_warehouse.ipynb` shows them with charts.
+
+**Long format for readings:** one row per sensor reading (not one column per sensor) keeps missing readings visible (`quality = 'missing'`) and lets new sensors be added without changing the schema.
+
+**Keys:** the small tables declare primary and foreign keys, and DuckDB enforces them. `fact_sensor_reading` declares none: DuckDB builds an index per constraint, which on 3.5 million rows made the build 7× slower and the file 5× bigger (13.5 s / 163 MB vs 1.9 s / 35 MB). Its integrity is verified by the model checks instead, as large warehouses usually do.
+
+**Safe rebuilds:** the warehouse is built in a temporary file and swapped in, so a failed build never leaves a half-built warehouse. If another program (a notebook, DBeaver) holds the file open, the build stops with a message to close it. Readers connect read-only.
+
+**Checks (`model_report.json`):** `unique_keys` (all 10 tables), `references` (14 fact → dimension links), `date_keys` (date key = timestamp date; no gaps in the calendar), `silver_reconciliation` (rows, non-empty values, sum of values and quality flags per sensor; event row counts), `gold_reconciliation` (fact_machine_month = Gold KPIs; failure and planned events counted from the facts = KPI totals), `views` (exist, run, return rows, totals match). Each check has a test that corrupts the warehouse to prove it fails; one of them showed that a relative tolerance of 1e-6 let a ₹1 change in ₹10 lakh pass, so the tolerance is 1e-9.
+
+**Why a star schema:** it is the standard model for analytics. It keeps dashboard queries simple (facts joined to small dimensions), makes business questions easy to express in SQL, and separates *what happened* (facts) from *descriptive context* (dimensions).
 
 ### 3.6 Machine Learning
 
@@ -189,7 +210,7 @@ On the real data both pass. A proof is skipped (not failed) when its input file 
 
 ### 3.7 Dashboard
 
-Streamlit app reading from the Gold layer and the star schema:
+Streamlit app reading from the warehouse (star schema and views):
 Executive Overview · Machine Health · Sensor Explorer · Maintenance Planner · Data Quality.
 
 ### 3.8 Business Insights
@@ -206,7 +227,7 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **Logging** | `iiot.utils.logger.get_logger(__name__)`. Writes to console and `logs/pipeline.log` (rotating, 5 MB × 3). Level is set in config. |
 | **Testing** | pytest. Tests use temporary config copies and never touch real data or logs. |
 | **Code quality** | ruff for linting and formatting (config in `pyproject.toml`). |
-| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`, `iiot silver build`, `iiot gold build`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
+| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`, `iiot silver build`, `iiot gold build`, `iiot model build`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
 | **Version control** | Code, documentation and the 5 source CSVs are committed. Generated data (dirty copy, reference data, Bronze/Silver/Gold), models, logs and secrets are excluded via `.gitignore`, because they can be regenerated with one command. |
 
 ---
@@ -218,6 +239,8 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **Medallion architecture** (Bronze/Silver/Gold) | Single cleaning script | Each layer has one responsibility, can be rebuilt independently, and is easy to debug and explain |
 | **Parquet** for storage | CSV, a database server | Columnar, compressed, typed, fast to read. Industry standard for data lakes. |
 | **DuckDB** for SQL | PostgreSQL, SQLite | Runs in-process with no server, and queries Parquet directly. Fast analytical SQL on a laptop. |
+| **Warehouse as one DuckDB file** | Views over Parquet only, Databricks | Real tables with enforced keys, one file any SQL tool can open, nothing to install; the SQL scripts would move to a cloud warehouse almost unchanged |
+| **No keys on `fact_sensor_reading`** | Declared primary/foreign keys | 7× faster build and 5× smaller file; integrity verified by the model checks instead |
 | **pandas** for processing | PySpark | The dataset (~1M rows) fits in memory. The layered design could move to Spark later without changing the architecture. |
 | **Public dataset + documented enhancements** | Fully simulated data | Real-world structure gives credibility. Documented enhancements fill the gaps (data-quality issues, costs) transparently. |
 | **YAML config + typed loader** | Constants in code | One place to change thresholds and assumptions. Invalid values fail fast with clear errors. |
@@ -234,12 +257,12 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 |---|---|---|
 | `iiot.config` | ✅ Done | Load and validate settings |
 | `iiot.utils.logger` | ✅ Done | Project-wide logging |
-| `iiot.cli` | ✅ Done | `iiot` command: `run`, `data`, `bronze`, `silver` and `gold` groups (later phases add groups) |
+| `iiot.cli` | ✅ Done | `iiot` command: `run`, `data`, `bronze`, `silver`, `gold` and `model` groups (later phases add groups) |
 | `iiot.ingestion` | ✅ Done | Download dataset, data contract, inject quality issues, build reference data |
 | `iiot.bronze` | ✅ Done | Raw → Bronze: loader, idempotent batch pipeline, DuckDB report |
 | `iiot.silver` | ✅ Done | Bronze → Silver: typing, cleaning rules, event/master tables, quality report with proofs |
 | `iiot.gold` | ✅ Done | Sensor and event features, labels, ML dataset, KPIs, quality checks |
-| `iiot.data_model` | ⏳ Phase 6 | Star schema |
+| `iiot.model` | ✅ Done | DuckDB star-schema warehouse: SQL scripts, builder, analytical views, model checks |
 | `iiot.ml` | ⏳ Phase 7 | Train, evaluate and score models |
 | `dashboard/` | ⏳ Phase 8 | Streamlit app |
 | `reports/` | ⏳ Phase 9 | Business insights report |

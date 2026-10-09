@@ -157,6 +157,7 @@ def build_warehouse(
 
     try:
         with duckdb.connect(str(tmp)) as con:
+            con.execute("SET enable_progress_bar = false")  # keep the pipeline logs clean
             register_sources(con, silver_dir, gold_dir)
             for script in sql_scripts(sql_dir):
                 try:

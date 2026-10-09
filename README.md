@@ -97,28 +97,93 @@ The project follows a **Medallion Architecture** (Bronze → Silver → Gold), f
 
 ### 5️⃣ Data Model: Star Schema
 
+A DuckDB warehouse (`data/warehouse/iiot.duckdb`): **fact tables** record what happened, **dimension tables** describe it.
+
+```mermaid
+erDiagram
+    dim_machine ||--o{ fact_sensor_reading : ""
+    dim_machine ||--o{ fact_failure : ""
+    dim_machine ||--o{ fact_maintenance : ""
+    dim_machine ||--o{ fact_error : ""
+    dim_machine ||--o{ fact_machine_month : ""
+    dim_date ||--o{ fact_sensor_reading : ""
+    dim_date ||--o{ fact_failure : ""
+    dim_date ||--o{ fact_maintenance : ""
+    dim_date ||--o{ fact_error : ""
+    dim_date ||--o{ fact_machine_month : "month"
+    dim_sensor ||--o{ fact_sensor_reading : ""
+    dim_component ||--o{ fact_failure : ""
+    dim_component ||--o{ fact_maintenance : ""
+    dim_error_type ||--o{ fact_error : ""
+
+    dim_machine {
+        int machine_id PK
+        string model
+        int age
+        string plant_id
+        string line_id
+    }
+    dim_date {
+        int date_key PK
+        date date
+        string year_month
+        int day_of_week
+        bool is_weekend
+    }
+    dim_sensor {
+        string sensor PK
+        double valid_min
+        double valid_max
+    }
+    dim_component {
+        string component PK
+        double unplanned_failure_cost
+        double planned_maintenance_cost
+        double unplanned_downtime_hours
+    }
+    dim_error_type {
+        string error_id PK
+    }
+    fact_sensor_reading {
+        int machine_id FK
+        int date_key FK
+        timestamp timestamp
+        string sensor FK
+        double value
+        string quality
+    }
+    fact_failure {
+        int machine_id FK
+        int date_key FK
+        string component FK
+        int components_in_event
+        double downtime_hours
+        double failure_cost
+    }
+    fact_maintenance {
+        int machine_id FK
+        int date_key FK
+        string component FK
+        string maintenance_type
+        double downtime_hours
+        double maintenance_cost
+    }
+    fact_error {
+        int machine_id FK
+        int date_key FK
+        string error_id FK
+    }
+    fact_machine_month {
+        int machine_id FK
+        int month_date_key FK
+        int failures
+        double availability
+        double mtbf_h
+        double total_cost
+    }
 ```
-                    ┌───────────────┐
-                    │  dim_machine  │ machine_id, model, age, line, plant
-                    └───────┬───────┘
-┌───────────┐               │               ┌────────────────┐
-│ dim_date  │───┐           │           ┌───│  dim_sensor    │ sensor, unit, limits
-└───────────┘   │   ┌───────┴────────┐  │   └────────────────┘
-                ├───│ fact_sensor_   │──┤
-                │   │ hourly         │  │   ┌────────────────┐
-                │   └────────────────┘  └───│ dim_component  │ component, repair cost
-                │   ┌────────────────┐      └────────────────┘
-                ├───│ fact_errors    │
-                │   └────────────────┘
-                │   ┌────────────────┐
-                ├───│ fact_          │ failures, replacements, downtime, cost
-                │   │ maintenance    │
-                │   └────────────────┘
-                │   ┌────────────────┐
-                └───│ fact_          │ anomaly score, failure probability, RUL
-                    │ predictions    │
-                    └────────────────┘
-```
+
+Four views (`v_fleet_monthly`, `v_machine_health`, `v_component_reliability`, `v_line_performance`) answer the common business questions. Model predictions are added as a fact table in Phase 7.
 
 ### 6️⃣ Machine Learning
 
@@ -182,7 +247,8 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 │   ├── raw/                 # 5 source CSVs (committed); generated files are not
 │   ├── bronze/              # generated layers below are not committed
 │   ├── silver/
-│   └── gold/
+│   ├── gold/
+│   └── warehouse/           # iiot.duckdb star-schema warehouse + model_report.json
 ├── src/iiot/
 │   ├── cli.py               # `iiot` command-line interface
 │   ├── config.py            # loads & validates settings.yaml
@@ -191,16 +257,18 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 │   ├── bronze/              # Bronze loader, batch pipeline, DuckDB report
 │   ├── silver/              # typing, cleaning rules, event/master tables, quality report
 │   ├── gold/                # features, labels, ML dataset, KPIs, quality checks
-│   ├── data_model/          # (Phase 6)
+│   ├── model/               # warehouse builder, SQL scripts (sql/), model checks
 │   └── ml/                  # (Phase 7)
 ├── dashboard/               # (Phase 8) Streamlit app
 ├── notebooks/
-│   └── 01_eda_raw_data.ipynb  # exploratory data analysis of the raw data
+│   ├── 01_eda_raw_data.ipynb        # exploratory data analysis of the raw data
+│   └── 02_explore_warehouse.ipynb   # browse the warehouse: tables, views, charts, SQL
 ├── reports/                 # (Phase 9) business insights
 ├── models/                  # trained models (not committed)
 ├── tests/                   # pytest test suite
 └── docs/
-    └── architecture.md      # detailed architecture & design decisions
+    ├── architecture.md      # detailed architecture & design decisions
+    └── example_queries.sql  # 10 business questions answered in SQL
 ```
 
 📖 See **[docs/architecture.md](docs/architecture.md)** for the detailed design of each layer and the reasoning behind each technology choice.
@@ -214,7 +282,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 - [x] **Phase 3: Bronze layer:** raw → Parquet with lineage metadata, idempotent reloads, DuckDB verification
 - [x] **Phase 4: Silver layer:** typing, cleaning rules, quality flags, validated tables, data-quality report with proofs
 - [x] **Phase 5: Gold layer:** features, labels, ML dataset, KPIs, leakage and reconciliation checks
-- [ ] **Phase 6: Data model:** star schema (facts & dimensions)
+- [x] **Phase 6: Data model:** DuckDB star schema (5 dimensions, 5 facts), analytical views, example queries, model checks
 - [ ] **Phase 7: Machine learning:** anomaly detection, failure prediction, RUL
 - [ ] **Phase 8: Dashboard:** Streamlit multi-page app
 - [ ] **Phase 9: Business insights:** cost, downtime and maintenance recommendations
@@ -300,7 +368,7 @@ Generated files are reproducible (fixed seeds in `config/settings.yaml`) and are
 ```bash
 iiot run
 ```
-Runs every step built so far, in order: data preparation (4 steps), Bronze ingest and Bronze report, the Silver build and the Gold build. On the real data the whole run takes about 35 seconds. It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
+Runs every step built so far, in order: data preparation (4 steps), Bronze ingest and Bronze report, the Silver build, the Gold build and the warehouse build. On the real data the whole run takes about 35 seconds. It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
 
 ### Explore the data
 Open [`notebooks/01_eda_raw_data.ipynb`](notebooks/01_eda_raw_data.ipynb) in VS Code or Jupyter, select the `.venv` kernel and run all cells.
@@ -437,6 +505,64 @@ Costs use the illustrative assumptions in `config/settings.yaml`.
 | `kpi_reconciliation` | KPI failure counts equal Silver; machine totals equal the sum of their months |
 
 Each check also has a test that feeds it deliberately broken data, for example a feature that peeks one hour ahead, to prove it can fail.
+
+---
+
+## 🗄️ Data Model: Warehouse (Phase 6)
+
+```bash
+iiot model build     # build data/warehouse/iiot.duckdb from Silver + Gold, then run all model checks
+iiot model report    # show the latest model report (PASSED / FAILED)
+```
+
+DuckDB is a database **inside a single file**: there is nothing to install or start. The tables are defined in plain SQL files in [`src/iiot/model/sql/`](src/iiot/model/sql/), run in name order. The warehouse is built in a temporary file and swapped in, so a failed build never leaves a half-built warehouse.
+
+### Tables (real data, built in about 3 s, 42 MB)
+| Table | Rows | One row per |
+|---|---|---|
+| `dim_machine` | 100 | machine (model, age, plant, line) |
+| `dim_date` | 580 | calendar day (2014-06-01 to 2016-01-01) |
+| `dim_sensor` / `dim_component` / `dim_error_type` | 4 / 4 / 5 | sensor (valid range) / component (costs, downtime) / error code |
+| `fact_sensor_reading` | 3,504,400 | machine × hour × sensor: value and quality (`ok` / `filled` / `missing`) |
+| `fact_failure` | 761 | component failure: downtime and cost |
+| `fact_maintenance` | 3,286 | component replacement: `planned` or `failure_repair` |
+| `fact_error` | 3,919 | error event |
+| `fact_machine_month` | 1,200 | machine × month: the Gold KPIs |
+
+### Views
+| View | Answers |
+|---|---|
+| `v_fleet_monthly` | How did the fleet perform each month? (failures, downtime, availability, MTBF, MTTR, cost) |
+| `v_machine_health` | Which machines need attention? (cost rank, errors in the last 30 days, days since last failure, data quality) |
+| `v_component_reliability` | Which components fail most, and what would preventing those failures save? |
+| `v_line_performance` | Which production lines perform best and worst? |
+
+More questions are answered in [`docs/example_queries.sql`](docs/example_queries.sql), for example *which error codes are early warnings* (51% of `error5` events are followed by a failure within 48 h) and *how sensors change in the 24 h before a failure*.
+
+### Checks (`data/warehouse/model_report.json`), all passing on the real data
+| Check | What it verifies |
+|---|---|
+| `unique_keys` | No duplicate or empty key in any table, including `fact_sensor_reading` |
+| `references` | Every machine, date, sensor, component and error in a fact table exists in its dimension |
+| `date_keys` | Each row's `date_key` matches its timestamp, and the calendar has no gaps |
+| `silver_reconciliation` | The facts hold exactly the Silver data (rows, values, sums and quality flags per sensor) |
+| `gold_reconciliation` | `fact_machine_month` equals the Gold KPIs, and the event counts match the fact tables (719 failures, 1,733 planned maintenances) |
+| `views` | Every view exists, runs, returns rows, and its totals match the facts |
+
+`fact_sensor_reading` has no declared keys on purpose: with them the build took 13.5 s and 163 MB, without them 1.9 s and 35 MB. The `unique_keys` and `references` checks protect it instead. Each check has a test that corrupts the warehouse to prove the check fails.
+
+### View the warehouse
+- **Notebook (recommended):** open [`notebooks/02_explore_warehouse.ipynb`](notebooks/02_explore_warehouse.ipynb), select the `.venv` kernel and run all cells.
+- **Python:**
+  ```python
+  from iiot.model.warehouse import connect
+
+  con = connect()  # read-only
+  con.sql("SELECT * FROM v_line_performance").show()
+  ```
+- **DBeaver (optional GUI):** create a DuckDB connection to `data/warehouse/iiot.duckdb` and tick *Read-only*.
+
+> Close notebooks and DBeaver connections before running `iiot model build` or `iiot run`. Otherwise the build cannot replace the file and stops with a message telling you to close them.
 
 ---
 
