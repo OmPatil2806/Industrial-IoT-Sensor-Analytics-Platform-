@@ -71,11 +71,11 @@ def connect(path: Path | None = None, read_only: bool = True) -> duckdb.DuckDBPy
     return duckdb.connect(str(path), read_only=read_only)
 
 
-def _sql_literal(path: Path) -> str:
+def sql_literal(path: Path) -> str:
     return "'" + path.as_posix().replace("'", "''") + "'"
 
 
-def _require(path: Path, layer: str = "silver") -> Path:
+def require_file(path: Path, layer: str = "silver") -> Path:
     if not path.exists():
         raise FileNotFoundError(f"{path} not found. Run `iiot {layer} build` first.")
     return path
@@ -89,9 +89,9 @@ def register_sources(con: duckdb.DuckDBPyConnection, silver_dir: Path, gold_dir:
         (GOLD_SOURCES, gold_dir, "gold"),
     ):
         for view, table in sources.items():
-            path = _require(folder / f"{table}.parquet", layer)
+            path = require_file(folder / f"{table}.parquet", layer)
             con.execute(
-                f"CREATE TEMP VIEW {view} AS SELECT * FROM read_parquet({_sql_literal(path)})"
+                f"CREATE TEMP VIEW {view} AS SELECT * FROM read_parquet({sql_literal(path)})"
             )
 
     sensors = pd.DataFrame(
@@ -106,7 +106,7 @@ def register_sources(con: duckdb.DuckDBPyConnection, silver_dir: Path, gold_dir:
 
     bounds = []
     for table in DATE_SOURCES:
-        path = _sql_literal(_require(silver_dir / f"{table}.parquet"))
+        path = sql_literal(require_file(silver_dir / f"{table}.parquet"))
         bounds.append(
             f"SELECT min(timestamp) AS lo, max(timestamp) AS hi FROM read_parquet({path})"
         )
