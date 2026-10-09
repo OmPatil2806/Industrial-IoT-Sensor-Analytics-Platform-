@@ -14,6 +14,7 @@ paths:
   gold: data/gold
   warehouse: data/warehouse
   models: models
+  mlruns: mlruns           # MLflow experiment tracking (local database + model files)
   reports: reports
   logs: logs
 
@@ -111,7 +112,19 @@ plant_layout:
 ml:
   prediction_horizon_hours: 24   # predict "will it fail within N hours?"
   train_end_date: "2015-10-01"   # time-based split: train before, test after
+  # The last months of the training data are held out as a validation set to tune
+  # the models and choose the alert threshold; the test set is used only once.
+  validation_start_date: "2015-08-01"
   random_seed: 42
+  # Cost of an alert that turns out to be false: one inspection (illustrative, INR).
+  false_alarm_cost: 20000
+  # Remaining-useful-life target is capped at this many hours (30 days).
+  rul_cap_hours: 720
+  # Never used as model inputs: plant and line were assigned randomly in Phase 2,
+  # so any pattern the model found in them would be noise.
+  exclude_features: [plant_id, line_id]
+  mlflow:
+    experiment: iiot-predictive-maintenance
 
 # -------------------------------------------------------------------
 # Logging

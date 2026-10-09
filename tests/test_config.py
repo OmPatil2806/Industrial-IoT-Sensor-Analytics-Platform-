@@ -14,6 +14,10 @@ def test_default_settings_load():
     assert set(settings.sensors) == {"volt", "rotate", "pressure", "vibration"}
     assert settings.ml.prediction_horizon_hours == 24
     assert settings.ml.train_end_date == date(2015, 10, 1)
+    assert settings.ml.validation_start_date == date(2015, 8, 1)
+    assert settings.ml.exclude_features == ("plant_id", "line_id")
+    assert settings.ml.mlflow_experiment == "iiot-predictive-maintenance"
+    assert settings.paths.mlruns.name == "mlruns"
     assert settings.business.currency == "INR"
     assert settings.dataset.files["telemetry"] == "PdM_telemetry.csv"
     assert [p.plant_id for p in settings.plant_layout.plants] == ["PUNE", "CHENNAI"]
@@ -52,6 +56,10 @@ def test_iiot_config_env_var_overrides_path(write_config, monkeypatch):
         ({"data_quality_injection": {"stuck_min_hours": 1}}, "stuck_min_hours"),
         ({"data_quality_injection": {"stuck_min_hours": 20}}, "stuck_min_hours"),
         ({"ml": {"prediction_horizon_hours": 0}}, "prediction_horizon_hours"),
+        ({"ml": {"validation_start_date": "2015-10-01"}}, "validation_start_date"),
+        ({"ml": {"false_alarm_cost": -1}}, "false_alarm_cost"),
+        ({"ml": {"rul_cap_hours": 0}}, "rul_cap_hours"),
+        ({"ml": {"mlflow": {"experiment": " "}}}, "experiment"),
         ({"logging": {"level": "LOUD"}}, "log level"),
         ({"silver": {"stuck_min_run": 1}}, "stuck_min_run"),
         ({"gold": {"feature_step_hours": 0}}, "feature_step_hours"),

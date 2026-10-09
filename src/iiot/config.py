@@ -33,6 +33,7 @@ class Paths:
     gold: Path
     warehouse: Path
     models: Path
+    mlruns: Path
     reports: Path
     logs: Path
 
@@ -114,7 +115,12 @@ class PlantLayout:
 class ML:
     prediction_horizon_hours: int
     train_end_date: date
+    validation_start_date: date
     random_seed: int
+    false_alarm_cost: float
+    rul_cap_hours: int
+    exclude_features: tuple[str, ...]
+    mlflow_experiment: str
 
 
 @dataclass(frozen=True)
@@ -182,8 +188,17 @@ def _validate(settings: Settings) -> None:
         raise ValueError(f"plant_layout: plant_id values must be unique, got {plant_ids}")
     if any(p.lines < 1 for p in settings.plant_layout.plants):
         raise ValueError("plant_layout: every plant needs at least 1 production line")
-    if settings.ml.prediction_horizon_hours <= 0:
+    ml = settings.ml
+    if ml.prediction_horizon_hours <= 0:
         raise ValueError("ml.prediction_horizon_hours must be positive")
+    if ml.validation_start_date >= ml.train_end_date:
+        raise ValueError("ml.validation_start_date must be before ml.train_end_date")
+    if ml.false_alarm_cost < 0:
+        raise ValueError("ml.false_alarm_cost must not be negative")
+    if ml.rul_cap_hours <= 0:
+        raise ValueError("ml.rul_cap_hours must be positive")
+    if not ml.mlflow_experiment.strip():
+        raise ValueError("ml.mlflow.experiment must not be empty")
     if settings.logging.level.upper() not in (
         "DEBUG",
         "INFO",
@@ -222,7 +237,12 @@ def load_settings(path: Path | str | None = None) -> Settings:
         ml=ML(
             prediction_horizon_hours=ml["prediction_horizon_hours"],
             train_end_date=date.fromisoformat(str(ml["train_end_date"])),
+            validation_start_date=date.fromisoformat(str(ml["validation_start_date"])),
             random_seed=ml["random_seed"],
+            false_alarm_cost=float(ml["false_alarm_cost"]),
+            rul_cap_hours=ml["rul_cap_hours"],
+            exclude_features=tuple(ml["exclude_features"]),
+            mlflow_experiment=ml["mlflow"]["experiment"],
         ),
         logging=Logging(**raw["logging"]),
     )
