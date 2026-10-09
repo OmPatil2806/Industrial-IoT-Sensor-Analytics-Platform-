@@ -3,4 +3,3 @@
 pytest>=8.0        # testing
 ruff>=0.4          # linting + formatting
 jupyter>=1.0       # exploratory analysis notebooks
-matplotlib>=3.8    # charts in notebooks

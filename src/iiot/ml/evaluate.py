@@ -205,19 +205,14 @@ def threshold_candidates(scores: np.ndarray) -> np.ndarray:
     return np.append(unique, scores.max() + 1.0)
 
 
-def choose_threshold(
+def net_saving_curve(
     df: pd.DataFrame,
     scores: np.ndarray,
     costs: Costs,
     target: str,
-    step: pd.Timedelta | None = None,
     cooldown: pd.Timedelta | None = None,
-) -> tuple[float, dict]:
-    """The threshold with the highest net saving. Use on VALIDATION data only.
-
-    Ties are broken towards the higher threshold (fewer alerts for the same money).
-    Returns the threshold and its metrics.
-    """
+) -> pd.DataFrame:
+    """Net saving, events caught and false alarms for every candidate threshold."""
     scores = np.asarray(scores, dtype=float)
     cooldown = cooldown or pd.Timedelta(hours=get_settings().ml.prediction_horizon_hours)
     # Everything that does not depend on the threshold is computed once.
@@ -234,12 +229,36 @@ def choose_threshold(
     )
     event_saving = _event_savings(events, costs)
 
-    best_threshold, best_net = None, -np.inf
+    curve = []
     for threshold in threshold_candidates(scores):
         alerts = scores >= threshold
         caught = np.bincount(event_of_row, weights=alerts[positive], minlength=len(events)) > 0
         false_alarms = int((~inspections(df, alerts, target, cooldown)).sum())
-        net = event_saving[caught].sum() - false_alarms * costs.false_alarm_cost
-        if net >= best_net:
-            best_threshold, best_net = float(threshold), net
-    return best_threshold, evaluate(df, scores, best_threshold, costs, target, step, cooldown)
+        curve.append(
+            {
+                "threshold": float(threshold),
+                "events_caught": int(caught.sum()),
+                "false_alarms": false_alarms,
+                "net_saving": event_saving[caught].sum() - false_alarms * costs.false_alarm_cost,
+            }
+        )
+    return pd.DataFrame(curve)
+
+
+def choose_threshold(
+    df: pd.DataFrame,
+    scores: np.ndarray,
+    costs: Costs,
+    target: str,
+    step: pd.Timedelta | None = None,
+    cooldown: pd.Timedelta | None = None,
+) -> tuple[float, dict]:
+    """The threshold with the highest net saving. Use on VALIDATION data only.
+
+    Ties are broken towards the higher threshold (fewer alerts for the same money).
+    Returns the threshold and its metrics.
+    """
+    curve = net_saving_curve(df, scores, costs, target, cooldown)
+    best = curve["net_saving"].max()
+    threshold = float(curve.loc[curve["net_saving"] == best, "threshold"].max())
+    return threshold, evaluate(df, scores, threshold, costs, target, step, cooldown)
