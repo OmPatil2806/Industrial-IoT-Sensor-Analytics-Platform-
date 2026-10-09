@@ -108,3 +108,27 @@ def net_saving_curve(curve: pd.DataFrame, chosen: float, title: str) -> Figure:
     ax.set_ylabel("net saving (lakh INR)")
     fig.tight_layout()
     return fig
+
+
+def importance_bars(table: pd.DataFrame, label_col: str, title: str) -> Figure:
+    """Horizontal bars of PR-AUC lost per input or group, largest at the top."""
+    table = table.sort_values("importance")
+    fig, ax = _figure(title)
+    fig.set_size_inches(6.4, 0.5 + 0.32 * len(table) + 1.2)
+    ax.barh(table[label_col], table["importance"], color=SERIES[0], height=0.6)
+    for y, value in enumerate(table["importance"]):
+        ax.annotate(
+            f"{value:.3f}",
+            (max(value, 0), y),
+            xytext=(4, 0),
+            textcoords="offset points",
+            va="center",
+            color=INK_SECONDARY,
+            fontsize=8,
+        )
+    ax.grid(axis="y", visible=False)
+    ax.set_xlim(0, max(table["importance"].max(), 0.01) * 1.15)
+    ax.set_xlabel("PR-AUC lost when shuffled")
+    ax.tick_params(axis="y", labelcolor=INK_SECONDARY)
+    fig.tight_layout()
+    return fig
