@@ -19,20 +19,17 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")  # keep the pipeline logs clean
+import mlflow
+import pandas as pd
 
-import mlflow  # noqa: E402  (must be imported after the setting above)
-import pandas as pd  # noqa: E402
-
-from iiot.config import PROJECT_ROOT, get_settings  # noqa: E402
-from iiot.ml.data import Splits, fingerprint  # noqa: E402
-from iiot.utils.logger import get_logger  # noqa: E402
+from iiot.config import PROJECT_ROOT, get_settings
+from iiot.ml.data import Splits, fingerprint
+from iiot.utils.logger import get_logger
 
 logger = get_logger("iiot.ml.tracking")
 
