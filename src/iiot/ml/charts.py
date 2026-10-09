@@ -132,3 +132,36 @@ def importance_bars(table: pd.DataFrame, label_col: str, title: str) -> Figure:
     ax.tick_params(axis="y", labelcolor=INK_SECONDARY)
     fig.tight_layout()
     return fig
+
+
+SEQUENTIAL = ["#fcfcfb", "#cde2fb", "#86b6ef", "#3987e5", "#256abf", "#184f95", "#0d366b"]
+
+
+def confusion_heatmap(matrix: pd.DataFrame, title: str) -> Figure:
+    """Counts of actual (rows) vs predicted (columns), one blue scale, counts in each cell."""
+    from matplotlib.colors import LinearSegmentedColormap
+
+    fig, ax = _figure(title)
+    fig.set_size_inches(5.2, 4.4)
+    cmap = LinearSegmentedColormap.from_list("blue", SEQUENTIAL)
+    values = matrix.to_numpy()
+    ax.imshow(values, cmap=cmap, vmin=0, vmax=max(values.max(), 1))
+    ax.grid(False)
+    ax.set_xticks(range(len(matrix.columns)), matrix.columns)
+    ax.set_yticks(range(len(matrix.index)), matrix.index)
+    for (i, j), value in np.ndenumerate(values):
+        dark = value > 0.55 * values.max()
+        ax.annotate(
+            f"{value:,}",
+            (j, i),
+            ha="center",
+            va="center",
+            color=SURFACE if dark else INK,
+            fontsize=9,
+        )
+    ax.set_xlabel("diagnosed (highest risk)")
+    ax.set_ylabel("actually failed")
+    for side in ("left", "bottom"):
+        ax.spines[side].set_visible(False)
+    fig.tight_layout()
+    return fig

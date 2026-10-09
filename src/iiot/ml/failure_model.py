@@ -74,7 +74,7 @@ SKOPS_TRUSTED_TYPES = [
 SHUFFLED_TOLERANCE = 3.0  # shuffled-label PR-AUC must stay below 3x the positive rate
 
 
-def model_signature(X: pd.DataFrame, scores: np.ndarray) -> ModelSignature:
+def model_signature(X: pd.DataFrame, scores: np.ndarray | pd.DataFrame) -> ModelSignature:
     """Inputs and output of the model, recorded in MLflow.
 
     Built from a sample with categories as text and every number as a float
