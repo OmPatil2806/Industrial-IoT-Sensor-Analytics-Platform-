@@ -33,15 +33,38 @@ def run_app() -> AppTest:
     return app
 
 
-def test_home_page_shows_the_platform_status(built, point_settings_at):
+def test_fleet_overview_is_the_default_page(built, point_settings_at):
     path, _ = built
     point_settings_at(path.parent)
     app = run_app()
     assert not app.exception
+    assert app.title[0].value == "📊 Fleet overview"
+    metrics = {m.label: m.value for m in app.metric}
+    assert metrics["Failure events"] == "1"
+    assert metrics["Total cost"] == "₹10.5 lakh"
+
+
+def test_plant_filter_changes_the_numbers(built, point_settings_at):
+    path, _ = built
+    point_settings_at(path.parent)
+    app = run_app()
+    app.radio[0].set_value("Chennai Plant").run()  # machine 2: no failures
+    assert not app.exception
+    metrics = {m.label: m.value for m in app.metric}
+    assert metrics["Failure events"] == "0"
+    assert metrics["Availability"] == "100.00%"
+    assert metrics["MTBF"] == "-"  # undefined without failures
+
+
+def test_platform_status_page(built, point_settings_at):
+    path, _ = built
+    point_settings_at(path.parent)
+    app = run_app()
+    app.switch_page("views/home.py").run()
+    assert not app.exception
     assert app.title[0].value.startswith("🏭 Industrial IoT Sensor Analytics")
     metrics = {m.label: m.value for m in app.metric}
-    assert metrics["Machines"] == "2"
-    assert metrics["Failures"] == "2"
+    assert (metrics["Machines"], metrics["Failures"]) == ("2", "2")
     assert any("not been trained" in i.value for i in app.info)  # no predictions yet
 
 

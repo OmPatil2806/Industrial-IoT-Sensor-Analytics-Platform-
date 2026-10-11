@@ -28,6 +28,7 @@ def cached(func):
 status = cached(data.status)
 report_status = cached(data.report_status)
 model_cards = cached(data.model_cards)
+plants = cached(data.plants)
 fleet_kpis = cached(data.fleet_kpis)
 fleet_monthly = cached(data.fleet_monthly)
 line_performance = cached(data.line_performance)
@@ -76,3 +77,7 @@ def inr(value: float) -> str:
 
 def pct(value: float, digits: int = 1) -> str:
     return "-" if value is None or pd.isna(value) else f"{100 * value:.{digits}f}%"
+
+
+def hours(value: float, digits: int = 0) -> str:
+    return "-" if value is None or pd.isna(value) else f"{value:,.{digits}f} h"

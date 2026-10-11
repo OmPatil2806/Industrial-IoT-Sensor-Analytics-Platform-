@@ -20,7 +20,9 @@ c1.metric("Machines", f"{status['tables']['dim_machine']:,}")
 c2.metric("Sensor readings", f"{status['tables']['fact_sensor_reading']:,}")
 c3.metric("Failures", f"{status['tables']['fact_failure']:,}")
 c4.metric("Days of data", f"{(status['data_to'] - status['data_from']).days:,}")
-st.caption(f"Hourly sensor data from {status['data_from']:%d %b %Y} to {status['data_to']:%d %b %Y}.")
+st.caption(
+    f"Hourly sensor data from {status['data_from']:%d %b %Y} to {status['data_to']:%d %b %Y}."
+)
 
 st.subheader("Quality checks")
 reports = ui.report_status()

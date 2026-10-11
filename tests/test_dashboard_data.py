@@ -74,6 +74,16 @@ def test_fleet_kpis(warehouse):
     assert isinstance(k["failures"], int)
 
 
+def test_plant_filter(warehouse):
+    assert list(data.plants(warehouse)["plant_id"]) == ["CHENNAI", "PUNE"]
+    chennai = data.fleet_kpis(warehouse, plant_id="CHENNAI")  # machine 2: no failures
+    assert (chennai["failures"], chennai["machines"], chennai["availability"]) == (0, 1, 1.0)
+    pune = data.fleet_monthly(warehouse, plant_id="PUNE")
+    assert pune[["failures", "total_cost"]].values.tolist() == [[1, 1_050_000.0]]
+    both = data.fleet_monthly(warehouse)
+    assert both.loc[0, "availability"] == pytest.approx(1 - 10 / (2 * 738))
+
+
 def test_fleet_views_are_returned(warehouse):
     assert len(data.fleet_monthly(warehouse)) == 1
     assert list(data.line_performance(warehouse)["availability_rank"]) == [1, 2]

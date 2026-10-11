@@ -103,29 +103,61 @@ def model_cards(models_dir: Path | None = None) -> dict[str, dict]:
 # ------------------------------------------------------------------ fleet
 
 
-def fleet_kpis(path: Path | None = None) -> dict:
-    """Headline numbers for the whole analysis period."""
+PLANT_FILTER = "(CAST(? AS VARCHAR) IS NULL OR m.plant_id = ?)"
+
+
+def plants(path: Path | None = None) -> pd.DataFrame:
+    return query(
+        "SELECT DISTINCT plant_id, plant_name FROM dim_machine ORDER BY plant_id", path=path
+    )
+
+
+def fleet_kpis(path: Path | None = None, plant_id: str | None = None) -> dict:
+    """Headline numbers for the whole analysis period (one plant, or all if None)."""
     row = query(
-        """
-        SELECT CAST(sum(failures) AS INTEGER)             AS failures,
-               CAST(sum(planned_maintenances) AS INTEGER) AS planned_maintenances,
-               sum(downtime_h)                            AS downtime_h,
-               1 - sum(downtime_h) / sum(period_hours)    AS availability,
-               (sum(period_hours) - sum(downtime_h)) / nullif(sum(failures), 0) AS mtbf_h,
-               sum(unplanned_downtime_h) / nullif(sum(failures), 0)            AS mttr_h,
-               sum(failure_cost)                          AS failure_cost,
-               sum(maintenance_cost)                      AS maintenance_cost,
-               sum(total_cost)                            AS total_cost,
-               count(DISTINCT machine_id)                 AS machines
-        FROM fact_machine_month
+        f"""
+        SELECT CAST(sum(k.failures) AS INTEGER)             AS failures,
+               CAST(sum(k.planned_maintenances) AS INTEGER) AS planned_maintenances,
+               sum(k.downtime_h)                            AS downtime_h,
+               1 - sum(k.downtime_h) / sum(k.period_hours)  AS availability,
+               (sum(k.period_hours) - sum(k.downtime_h)) / nullif(sum(k.failures), 0) AS mtbf_h,
+               sum(k.unplanned_downtime_h) / nullif(sum(k.failures), 0)              AS mttr_h,
+               sum(k.failure_cost)                          AS failure_cost,
+               sum(k.maintenance_cost)                      AS maintenance_cost,
+               sum(k.total_cost)                            AS total_cost,
+               count(DISTINCT k.machine_id)                 AS machines
+        FROM fact_machine_month AS k
+        JOIN dim_machine AS m USING (machine_id)
+        WHERE {PLANT_FILTER}
         """,
+        [plant_id, plant_id],
         path=path,
     )
     return {col: row[col].iloc[0].item() for col in row.columns}
 
 
-def fleet_monthly(path: Path | None = None) -> pd.DataFrame:
-    return query("SELECT * FROM v_fleet_monthly ORDER BY year_month", path=path)
+def fleet_monthly(path: Path | None = None, plant_id: str | None = None) -> pd.DataFrame:
+    """Monthly failures, downtime, availability and cost (one plant, or all if None).
+
+    Same rules as v_fleet_monthly: ratios are recomputed from the summed hours."""
+    return query(
+        f"""
+        SELECT k.year_month,
+               CAST(sum(k.failures) AS INTEGER)            AS failures,
+               sum(k.downtime_h)                           AS downtime_h,
+               1 - sum(k.downtime_h) / sum(k.period_hours) AS availability,
+               sum(k.failure_cost)                         AS failure_cost,
+               sum(k.maintenance_cost)                     AS maintenance_cost,
+               sum(k.total_cost)                           AS total_cost
+        FROM fact_machine_month AS k
+        JOIN dim_machine AS m USING (machine_id)
+        WHERE {PLANT_FILTER}
+        GROUP BY k.year_month
+        ORDER BY k.year_month
+        """,
+        [plant_id, plant_id],
+        path=path,
+    )
 
 
 def line_performance(path: Path | None = None) -> pd.DataFrame:
