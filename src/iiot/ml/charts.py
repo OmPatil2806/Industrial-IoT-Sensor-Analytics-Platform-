@@ -165,3 +165,36 @@ def confusion_heatmap(matrix: pd.DataFrame, title: str) -> Figure:
         ax.spines[side].set_visible(False)
     fig.tight_layout()
     return fig
+
+
+def flag_rate_bars(rates: dict[str, float], design_rate: float, title: str) -> Figure:
+    """Share of rows flagged per period before a failure, with the designed normal rate."""
+    fig, ax = _figure(title)
+    labels, values = list(rates), [100 * v for v in rates.values()]
+    ax.bar(labels, values, color=SERIES[0], width=0.6)
+    for x, value in enumerate(values):
+        ax.annotate(
+            f"{value:.1f}%",
+            (x, value),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            color=INK_SECONDARY,
+            fontsize=8,
+        )
+    ax.axhline(100 * design_rate, color=INK_MUTED, linewidth=1, linestyle=":")
+    ax.annotate(
+        f"dotted line: {design_rate:.0%} of rows flagged in normal operation, by design",
+        (0.99, 0.97),
+        xycoords="axes fraction",
+        ha="right",
+        va="top",
+        color=INK_MUTED,
+        fontsize=8,
+    )
+    ax.grid(axis="x", visible=False)
+    ax.set_ylim(0, max(values + [100 * design_rate]) * 1.2)
+    ax.set_xlabel("time before the next failure")
+    ax.set_ylabel("rows flagged (%)")
+    fig.tight_layout()
+    return fig
