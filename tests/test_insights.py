@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from iiot.insights import calculations as calc
+from iiot.insights import report
 from iiot.insights.build import AS_TESTED, INSIGHTS_FILE_NAME, build_insights
 from iiot.model.warehouse import build_warehouse
 from tests.test_dashboard_data import write_predictions
@@ -273,3 +274,52 @@ def test_build_insights(scored, models_dir, tmp_path):
 def test_build_insights_needs_a_trained_model(scored, tmp_path):
     with pytest.raises(FileNotFoundError, match="iiot ml train"):
         build_insights(scored, models_dir=tmp_path / "empty", reports_dir=tmp_path / "r")
+
+
+# ------------------------------------------------------------------ report
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        (262_700_000, "₹26.27 cr"),
+        (5_000_000, "₹50.0 lakh"),
+        (20_000, "₹20,000"),
+        (-2e7, "₹-2.00 cr"),
+    ],
+)
+def test_inr(value, text):
+    assert report.inr(value) == text
+
+
+def test_months_and_plural():
+    assert report.months(None) == "never"
+    assert report.months(0.3) == "under 1 month"
+    assert report.months(14.25) == "14.2 months"
+    assert report.plural(1, "false alarm") == "1 false alarm"
+    assert report.plural(3, "false alarm") == "3 false alarms"
+
+
+def test_write_report(scored, models_dir, tmp_path):
+    reports = tmp_path / "reports"
+    insights = build_insights(scored, models_dir=models_dir, reports_dir=reports)
+    out = report.write_report(reports_dir=reports)  # reads insights.json
+
+    md = out.read_text(encoding="utf-8")
+    for name in report.FIGURES:
+        assert (reports / "figures" / f"{name}.png").stat().st_size > 0
+        assert f"(figures/{name}.png)" in md
+    expected = next(s for s in insights["scenarios"] if s["name"] == "expected")
+    assert f"**{report.inr(expected['net_saving'])} a year**" in md
+    assert "Start with PUNE-L1" in md  # the only line with a failure
+    assert "comp2 | rotation (100%)" in md
+    assert "with 3 false alarms." in md
+    # unchanged insights give byte-identical charts
+    first = (reports / "figures" / "lines.png").read_bytes()
+    report.write_report(insights, reports_dir=reports)
+    assert (reports / "figures" / "lines.png").read_bytes() == first
+
+
+def test_write_report_needs_insights(tmp_path):
+    with pytest.raises(FileNotFoundError, match="insights"):
+        report.write_report(reports_dir=tmp_path)

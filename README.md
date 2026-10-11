@@ -289,7 +289,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 - [x] **Phase 6: Data model:** DuckDB star schema (5 dimensions, 5 facts), analytical views, example queries, model checks
 - [x] **Phase 7: Machine learning:** failure prediction, component diagnosis, anomaly detection, explanations, MLflow tracking and registry, predictions in the warehouse
 - [x] **Phase 8: Dashboard:** Streamlit app with 5 pages: fleet overview, machines at risk (replay), machine detail, maintenance planner, model & data health
-- [ ] **Phase 9: Business insights:** cost, downtime and maintenance recommendations
+- [ ] **Phase 9: Business insights:** cost, downtime and maintenance recommendations (in progress: [business report](reports/business_insights.md))
 - [ ] **Phase 10: Testing, CI & final documentation**
 
 ---

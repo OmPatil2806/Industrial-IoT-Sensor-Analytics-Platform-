@@ -1,0 +1,487 @@
+{
+  "generated_at": "2026-10-11T15:11:34.400600+00:00",
+  "baseline": {
+    "failures": 719,
+    "planned_maintenances": 1733,
+    "downtime_h": 11154.0,
+    "availability": 0.9872583961617546,
+    "mtbf_h": 1202.011126564673,
+    "mttr_h": 9.349095966620306,
+    "failure_cost": 414845000.0,
+    "maintenance_cost": 376890000.0,
+    "total_cost": 791735000.0,
+    "machines": 100
+  },
+  "base_year": {
+    "years": 0.9993150684931507,
+    "failure_events": 719,
+    "component_failures": {
+      "comp1": 192,
+      "comp2": 259,
+      "comp3": 131,
+      "comp4": 179
+    },
+    "saving_if_every_failure_caught": 275803906.78546953,
+    "downtime_avoidable_h": 4863.331048663468
+  },
+  "scenarios": [
+    {
+      "name": "conservative",
+      "catch_rate": 0.5,
+      "false_alarms_per_catch": 1.0,
+      "failures_caught": 359.7464016449623,
+      "false_alarms": 359.7464016449623,
+      "gross_saving": 137901953.39273477,
+      "false_alarm_cost": 7194928.032899247,
+      "program_cost": 5000000.0,
+      "net_saving": 125707025.35983552,
+      "downtime_avoided_h": 2431.665524331734,
+      "availability_gain": 0.27758738862234406,
+      "payback_months": 0.459041890325485,
+      "inspections_per_week": 13.836400063267781,
+      "technician_hours_per_week": 46.53187114461961,
+      "parts_per_quarter": {
+        "comp1": 24.016449623029473,
+        "comp2": 32.3971898560658,
+        "comp3": 16.38622344071282,
+        "comp4": 22.390335846470187
+      }
+    },
+    {
+      "name": "expected",
+      "catch_rate": 0.7,
+      "false_alarms_per_catch": 0.5,
+      "failures_caught": 503.6449623029472,
+      "false_alarms": 251.8224811514736,
+      "gross_saving": 193062734.74982867,
+      "false_alarm_cost": 5036449.623029472,
+      "program_cost": 5000000.0,
+      "net_saving": 183026285.1267992,
+      "downtime_avoided_h": 3404.331734064428,
+      "availability_gain": 0.3886223440712817,
+      "payback_months": 0.31910432075780165,
+      "inspections_per_week": 14.528220066431171,
+      "technician_hours_per_week": 55.45913955818,
+      "parts_per_quarter": {
+        "comp1": 33.62302947224126,
+        "comp2": 45.35606579849212,
+        "comp3": 22.94071281699794,
+        "comp4": 31.34647018505826
+      }
+    },
+    {
+      "name": "as tested",
+      "catch_rate": 0.9707602339181286,
+      "false_alarms_per_catch": 0.006024096385542169,
+      "failures_caught": 698.4550020241373,
+      "false_alarms": 4.207560253157454,
+      "gross_saving": 267739465.06659612,
+      "false_alarm_cost": 84151.20506314909,
+      "program_cost": 5000000.0,
+      "net_saving": 262655313.861533,
+      "downtime_avoided_h": 4721.128386421846,
+      "availability_gain": 0.5389415966234984,
+      "payback_months": 0.224168910134323,
+      "inspections_per_week": 13.51274158225567,
+      "technician_hours_per_week": 63.640755550499065,
+      "parts_per_quarter": {
+        "comp1": 46.62842850787008,
+        "comp2": 62.899807205928916,
+        "comp3": 31.814188200682192,
+        "comp4": 43.47129532764971
+      }
+    }
+  ],
+  "break_even_catch_rate": 0.018614418710871765,
+  "sensitivity": {
+    "false_alarms_per_catch": 0.5,
+    "catch_rates": [
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      1.0
+    ],
+    "false_alarm_costs": [
+      10000,
+      20000,
+      30000,
+      50000
+    ],
+    "net_saving": [
+      [
+        76661932.83070596,
+        75582693.62577108,
+        74503454.4208362,
+        72344976.01096642
+      ],
+      [
+        103882577.10760796,
+        102443591.5010281,
+        101004605.89444827,
+        98126634.68128857
+      ],
+      [
+        131103221.38450995,
+        129304489.37628514,
+        127505757.36806032,
+        123908293.35161069
+      ],
+      [
+        158323865.6614119,
+        156165387.25154215,
+        154006908.8416724,
+        149689952.02193284
+      ],
+      [
+        185544509.9383139,
+        183026285.12679917,
+        180508060.31528443,
+        175471610.69225496
+      ],
+      [
+        212765154.21521592,
+        209887183.0020562,
+        207009211.78889653,
+        201253269.36257714
+      ],
+      [
+        239985798.4921179,
+        236748080.87731326,
+        233510363.26250857,
+        227034928.03289926
+      ],
+      [
+        267206442.7690199,
+        263608978.75257027,
+        260011514.73612064,
+        252816586.70322138
+      ]
+    ]
+  },
+  "focus": {
+    "lines": [
+      {
+        "plant_name": "Chennai Plant",
+        "line_id": "CHENNAI-L1",
+        "machines": 20,
+        "failures": 177,
+        "failures_per_machine": 8.85,
+        "cost_per_machine": 8624000.0,
+        "failure_cost": 103205000.0,
+        "availability": 0.9857779301,
+        "failure_cost_share": 0.2487796647,
+        "above_fleet_average": true
+      },
+      {
+        "plant_name": "Chennai Plant",
+        "line_id": "CHENNAI-L2",
+        "machines": 20,
+        "failures": 147,
+        "failures_per_machine": 7.35,
+        "cost_per_machine": 8006625.0,
+        "failure_cost": 85367500.0,
+        "availability": 0.9869716701,
+        "failure_cost_share": 0.2057816775,
+        "above_fleet_average": true
+      },
+      {
+        "plant_name": "Pune Plant",
+        "line_id": "PUNE-L3",
+        "machines": 20,
+        "failures": 144,
+        "failures_per_machine": 7.2,
+        "cost_per_machine": 7863875.0,
+        "failure_cost": 81402500.0,
+        "availability": 0.9875371259,
+        "failure_cost_share": 0.1962238909,
+        "above_fleet_average": true
+      },
+      {
+        "plant_name": "Pune Plant",
+        "line_id": "PUNE-L2",
+        "machines": 20,
+        "failures": 126,
+        "failures_per_machine": 6.3,
+        "cost_per_machine": 7558500.0,
+        "failure_cost": 70950000.0,
+        "availability": 0.9880397533,
+        "failure_cost_share": 0.1710277332,
+        "above_fleet_average": false
+      },
+      {
+        "plant_name": "Pune Plant",
+        "line_id": "PUNE-L1",
+        "machines": 20,
+        "failures": 125,
+        "failures_per_machine": 6.25,
+        "cost_per_machine": 7533750.0,
+        "failure_cost": 73920000.0,
+        "availability": 0.9879655015,
+        "failure_cost_share": 0.1781870337,
+        "above_fleet_average": false
+      }
+    ],
+    "models": [
+      {
+        "model": "model1",
+        "machines": 16,
+        "failures": 175,
+        "total_cost": 146250000.0,
+        "failures_per_machine": 10.9375,
+        "cost_per_machine": 9140625.0
+      },
+      {
+        "model": "model2",
+        "machines": 17,
+        "failures": 160,
+        "total_cost": 143122500.0,
+        "failures_per_machine": 9.4117647059,
+        "cost_per_machine": 8418970.588235294
+      },
+      {
+        "model": "model3",
+        "machines": 35,
+        "failures": 212,
+        "total_cost": 270965000.0,
+        "failures_per_machine": 6.0571428571,
+        "cost_per_machine": 7741857.142857143
+      },
+      {
+        "model": "model4",
+        "machines": 32,
+        "failures": 172,
+        "total_cost": 231397500.0,
+        "failures_per_machine": 5.375,
+        "cost_per_machine": 7231171.875
+      }
+    ],
+    "age_bands": [
+      {
+        "age_band": "0-4 years",
+        "machines": 17,
+        "failures": 99,
+        "total_cost": 119990000.0,
+        "failures_per_machine": 5.8235294118,
+        "cost_per_machine": 7058235.294117647
+      },
+      {
+        "age_band": "5-9 years",
+        "machines": 20,
+        "failures": 104,
+        "total_cost": 141612500.0,
+        "failures_per_machine": 5.2,
+        "cost_per_machine": 7080625.0
+      },
+      {
+        "age_band": "10-14 years",
+        "machines": 28,
+        "failures": 202,
+        "total_cost": 224467500.0,
+        "failures_per_machine": 7.2142857143,
+        "cost_per_machine": 8016696.428571428
+      },
+      {
+        "age_band": "15+ years",
+        "machines": 35,
+        "failures": 314,
+        "total_cost": 305665000.0,
+        "failures_per_machine": 8.9714285714,
+        "cost_per_machine": 8733285.714285715
+      }
+    ],
+    "costliest_machines": [
+      {
+        "machine_id": 99,
+        "model": "model1",
+        "age": 14,
+        "line_id": "CHENNAI-L1",
+        "failures": 19,
+        "total_cost": 12242500.0
+      },
+      {
+        "machine_id": 83,
+        "model": "model4",
+        "age": 18,
+        "line_id": "CHENNAI-L1",
+        "failures": 12,
+        "total_cost": 11440000.0
+      },
+      {
+        "machine_id": 98,
+        "model": "model2",
+        "age": 20,
+        "line_id": "PUNE-L1",
+        "failures": 14,
+        "total_cost": 11420000.0
+      },
+      {
+        "machine_id": 37,
+        "model": "model1",
+        "age": 16,
+        "line_id": "CHENNAI-L2",
+        "failures": 14,
+        "total_cost": 10890000.0
+      },
+      {
+        "machine_id": 17,
+        "model": "model1",
+        "age": 14,
+        "line_id": "CHENNAI-L1",
+        "failures": 13,
+        "total_cost": 10650000.0
+      },
+      {
+        "machine_id": 22,
+        "model": "model1",
+        "age": 14,
+        "line_id": "PUNE-L1",
+        "failures": 13,
+        "total_cost": 10337500.0
+      },
+      {
+        "machine_id": 7,
+        "model": "model3",
+        "age": 20,
+        "line_id": "CHENNAI-L2",
+        "failures": 9,
+        "total_cost": 9947500.0
+      },
+      {
+        "machine_id": 13,
+        "model": "model1",
+        "age": 15,
+        "line_id": "CHENNAI-L2",
+        "failures": 10,
+        "total_cost": 9872500.0
+      },
+      {
+        "machine_id": 20,
+        "model": "model2",
+        "age": 16,
+        "line_id": "CHENNAI-L2",
+        "failures": 13,
+        "total_cost": 9857500.0
+      },
+      {
+        "machine_id": 35,
+        "model": "model1",
+        "age": 17,
+        "line_id": "CHENNAI-L1",
+        "failures": 10,
+        "total_cost": 9810000.0
+      }
+    ],
+    "costliest_10_share_of_failure_cost": 0.18471356771806338,
+    "components": [
+      {
+        "component": "comp2",
+        "failures": 259,
+        "failure_cost": 152810000.0,
+        "saving_if_all_prevented": 98420000.0,
+        "cost_per_failure": 590000.0,
+        "failure_cost_share": 0.3683544456,
+        "saving_share": 0.3570923208
+      },
+      {
+        "component": "comp4",
+        "failures": 179,
+        "failure_cost": 127537500.0,
+        "saving_if_all_prevented": 87262500.0,
+        "cost_per_failure": 712500.0,
+        "failure_cost_share": 0.3074341019,
+        "saving_share": 0.3166101264
+      },
+      {
+        "component": "comp1",
+        "failures": 192,
+        "failure_cost": 88320000.0,
+        "saving_if_all_prevented": 61440000.0,
+        "cost_per_failure": 460000.0,
+        "failure_cost_share": 0.2128987935,
+        "saving_share": 0.2229196524
+      },
+      {
+        "component": "comp3",
+        "failures": 131,
+        "failure_cost": 46177500.0,
+        "saving_if_all_prevented": 28492500.0,
+        "cost_per_failure": 352500.0,
+        "failure_cost_share": 0.1113126589,
+        "saving_share": 0.1033779003
+      }
+    ]
+  },
+  "warning_signatures": [
+    {
+      "component": "comp1",
+      "signal": "error1",
+      "share_of_alerts": 0.9259259259
+    },
+    {
+      "component": "comp1",
+      "signal": "voltage",
+      "share_of_alerts": 0.9027777778
+    },
+    {
+      "component": "comp2",
+      "signal": "rotation",
+      "share_of_alerts": 0.9225225225
+    },
+    {
+      "component": "comp2",
+      "signal": "error3",
+      "share_of_alerts": 0.4216216216
+    },
+    {
+      "component": "comp3",
+      "signal": "pressure",
+      "share_of_alerts": 0.9705882353
+    },
+    {
+      "component": "comp3",
+      "signal": "error4",
+      "share_of_alerts": 0.9705882353
+    },
+    {
+      "component": "comp4",
+      "signal": "error5",
+      "share_of_alerts": 0.9621212121
+    },
+    {
+      "component": "comp4",
+      "signal": "vibration",
+      "share_of_alerts": 0.9583333333
+    }
+  ],
+  "test_period": {
+    "events_caught": 166,
+    "failure_events": 171,
+    "false_alarms": 1,
+    "net_saving": 64130000.0
+  },
+  "assumptions": {
+    "currency": "INR",
+    "false_alarm_cost": 20000.0,
+    "program_cost_per_year": 5000000.0,
+    "inspection_hours": 2.0,
+    "downtime_cost_per_hour": 50000,
+    "scenarios": {
+      "conservative": {
+        "catch_rate": 0.5,
+        "false_alarms_per_catch": 1.0
+      },
+      "expected": {
+        "catch_rate": 0.7,
+        "false_alarms_per_catch": 0.5
+      },
+      "as tested": {
+        "catch_rate": 0.9707602339181286,
+        "false_alarms_per_catch": 0.006024096385542169
+      }
+    }
+  }
+}
