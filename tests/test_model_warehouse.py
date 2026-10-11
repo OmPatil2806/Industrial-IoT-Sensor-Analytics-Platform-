@@ -7,6 +7,7 @@ in conftest.py, shared with test_model_views.py.
 from __future__ import annotations
 
 import duckdb
+import pandas as pd
 import pytest
 
 from iiot.model import warehouse
@@ -29,6 +30,7 @@ def test_all_tables_are_built(built):
         "fact_failure": 2,
         "fact_machine_month": 2,
         "fact_maintenance": 2,
+        "fact_prediction": 0,  # no ML predictions in the fixture
         "fact_sensor_reading": 8,  # 2 machine-hours x 4 sensors
     }
 
@@ -137,6 +139,8 @@ def test_scripts_run_in_file_name_order():
         "12_v_machine_health.sql",
         "13_v_component_reliability.sql",
         "14_v_line_performance.sql",
+        "15_fact_prediction.sql",
+        "16_v_machine_risk_now.sql",
     ]
 
 
@@ -231,3 +235,37 @@ def test_missing_gold_kpis_raise(silver, tmp_path):
     (silver.parent / "gold" / "kpi_machine_monthly.parquet").unlink()
     with pytest.raises(FileNotFoundError, match="iiot gold build"):
         build(silver, tmp_path / "w.duckdb")
+
+
+def test_predictions_are_loaded_when_present(silver, tmp_path):
+    t = pd.to_datetime(["2015-01-01 06:00", "2015-01-01 06:00"]).astype("datetime64[us]")
+    pd.DataFrame(
+        {
+            "machine_id": pd.array([1, 2], dtype="Int64"),
+            "timestamp": t,
+            "failure_risk": [0.9, 0.1],
+            "alert": [True, False],
+            "predicted_component": ["comp2", "comp1"],
+            "comp1_risk": [0.1, 0.1],
+            "comp2_risk": [0.9, 0.0],
+            "comp3_risk": [0.0, 0.0],
+            "comp4_risk": [0.0, 0.0],
+            "anomaly_score": [0.6, 0.4],
+            "anomaly_flag": [True, False],
+            "reason_1": ["rotation 24 h mean 380.0 vs normal 450.0 (-16%)", None],
+            "reason_2": [None, None],
+            "reason_3": [None, None],
+            "out_of_sample": [True, True],
+            "failure_model_version": ["1", "1"],
+            "component_model_version": ["1", "1"],
+            "anomaly_model_version": ["1", "1"],
+        }
+    ).to_parquet(silver.parent / "gold" / "predictions.parquet")
+    path = tmp_path / "w.duckdb"
+    assert build(silver, path)["fact_prediction"] == 2
+    con = connect(path)
+    rows = con.sql(
+        "SELECT risk_rank, machine_id, predicted_component FROM v_machine_risk_now"
+    ).fetchall()
+    con.close()
+    assert rows == [(1, 1, "comp2"), (2, 2, "comp1")]

@@ -16,7 +16,8 @@ existing one. The checks:
                        failure / planned-maintenance events equal the events
                        counted from the fact tables in the analysis period
     views              every expected view exists, runs, returns rows, and its
-                       totals equal fact_machine_month
+                       totals equal fact_machine_month (v_machine_risk_now may be
+                       empty until the ML models are scored; then one row per machine)
 
 `passed` is true only if every check passes.
 """
@@ -57,6 +58,7 @@ KEYS = {
     "fact_maintenance": ["machine_id", "timestamp", "component"],
     "fact_error": ["machine_id", "timestamp", "error_id"],
     "fact_machine_month": ["machine_id", "year_month"],
+    "fact_prediction": ["machine_id", "timestamp"],
 }
 # (fact table, column) -> (dimension table, column)
 REFERENCES = {
@@ -74,6 +76,9 @@ REFERENCES = {
     ("fact_error", "error_id"): ("dim_error_type", "error_id"),
     ("fact_machine_month", "machine_id"): ("dim_machine", "machine_id"),
     ("fact_machine_month", "month_date_key"): ("dim_date", "date_key"),
+    ("fact_prediction", "machine_id"): ("dim_machine", "machine_id"),
+    ("fact_prediction", "date_key"): ("dim_date", "date_key"),
+    ("fact_prediction", "predicted_component"): ("dim_component", "component"),
 }
 EVENT_TABLES = {
     "fact_failure": "failures",
@@ -85,7 +90,10 @@ EXPECTED_VIEWS = [
     "v_fleet_monthly",
     "v_line_performance",
     "v_machine_health",
+    "v_machine_risk_now",
 ]
+# Views over the ML predictions: empty is fine until the models are trained and scored.
+PREDICTION_VIEWS = {"v_machine_risk_now"}
 VIEWS_WITH_TOTALS = ["v_fleet_monthly", "v_machine_health", "v_line_performance"]
 KPI_COLUMNS = ["failures", "components_failed", "planned_maintenances", "downtime_h", "total_cost"]
 
@@ -135,7 +143,7 @@ def check_references(con: duckdb.DuckDBPyConnection) -> dict:
 
 def check_date_keys(con: duckdb.DuckDBPyConnection) -> dict:
     mismatched = {}
-    for table in ("fact_sensor_reading", *EVENT_TABLES):
+    for table in ("fact_sensor_reading", *EVENT_TABLES, "fact_prediction"):
         (n,) = _one(
             con,
             f"SELECT count(*) FROM {table} "
@@ -256,6 +264,7 @@ def check_gold_reconciliation(con: duckdb.DuckDBPyConnection, gold_dir: Path) ->
 def check_views(con: duckdb.DuckDBPyConnection) -> dict:
     present = view_names(con)
     problems = {name: "missing" for name in EXPECTED_VIEWS if name not in present}
+    (has_predictions,) = _one(con, "SELECT count(*) > 0 FROM fact_prediction")
     rows = {}
     for name in present:
         try:
@@ -263,8 +272,14 @@ def check_views(con: duckdb.DuckDBPyConnection) -> dict:
         except duckdb.Error as e:
             problems[name] = f"fails: {e}"
             continue
-        if rows[name] == 0:
+        if rows[name] == 0 and not (name in PREDICTION_VIEWS and not has_predictions):
             problems[name] = "returns no rows"
+    if has_predictions and "v_machine_risk_now" in rows:
+        (machines,) = _one(con, "SELECT count(*) FROM dim_machine")
+        if rows["v_machine_risk_now"] != machines:
+            problems["v_machine_risk_now"] = (
+                f"{rows['v_machine_risk_now']} rows, expected one per machine ({machines})"
+            )
     expected = _one(con, "SELECT sum(failures), sum(total_cost) FROM fact_machine_month")
     for name in VIEWS_WITH_TOTALS:
         if name in problems or name not in present:

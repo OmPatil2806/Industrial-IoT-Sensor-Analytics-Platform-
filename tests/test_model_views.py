@@ -16,7 +16,13 @@ import pytest
 from iiot.model.warehouse import connect, view_names
 
 EXAMPLE_QUERIES = Path(__file__).parents[1] / "docs" / "example_queries.sql"
-VIEWS = ["v_component_reliability", "v_fleet_monthly", "v_line_performance", "v_machine_health"]
+VIEWS = [
+    "v_component_reliability",
+    "v_fleet_monthly",
+    "v_line_performance",
+    "v_machine_health",
+    "v_machine_risk_now",
+]
 
 
 @pytest.fixture

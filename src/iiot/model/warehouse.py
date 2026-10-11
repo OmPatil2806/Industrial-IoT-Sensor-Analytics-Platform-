@@ -9,6 +9,7 @@ views, so the SQL never needs file paths:
     src_telemetry         Silver cleaned telemetry (with quality flags)
     src_failures, src_maintenance, src_errors   Silver events
     src_kpi_machine_monthly                     Gold KPIs per machine and month
+    src_predictions       ML scores per machine and time (empty until models are scored)
     src_sensors           sensor names and valid ranges from config
     src_error_types       allowed error IDs from the raw data contract
     src_dates             every calendar day that appears in the data
@@ -52,6 +53,18 @@ SILVER_SOURCES = {
     "src_errors": "errors",
 }
 GOLD_SOURCES = {"src_kpi_machine_monthly": "kpi_machine_monthly"}
+# ML predictions (Phase 7) are optional: until the models are trained and scored, the
+# warehouse gets an empty src_predictions with the same columns.
+PREDICTIONS_FILE_NAME = "predictions.parquet"
+EMPTY_PREDICTIONS = """
+CREATE TEMP TABLE src_predictions (
+    machine_id INTEGER, timestamp TIMESTAMP, failure_risk DOUBLE, alert BOOLEAN,
+    predicted_component VARCHAR, comp1_risk DOUBLE, comp2_risk DOUBLE, comp3_risk DOUBLE,
+    comp4_risk DOUBLE, anomaly_score DOUBLE, anomaly_flag BOOLEAN, reason_1 VARCHAR,
+    reason_2 VARCHAR, reason_3 VARCHAR, out_of_sample BOOLEAN, failure_model_version VARCHAR,
+    component_model_version VARCHAR, anomaly_model_version VARCHAR
+)
+"""
 DATE_SOURCES = ("telemetry", "errors", "maintenance", "failures")
 
 
@@ -93,6 +106,16 @@ def register_sources(con: duckdb.DuckDBPyConnection, silver_dir: Path, gold_dir:
             con.execute(
                 f"CREATE TEMP VIEW {view} AS SELECT * FROM read_parquet({sql_literal(path)})"
             )
+
+    predictions = gold_dir / PREDICTIONS_FILE_NAME
+    if predictions.exists():
+        con.execute(
+            "CREATE TEMP VIEW src_predictions AS "
+            f"SELECT * FROM read_parquet({sql_literal(predictions)})"
+        )
+    else:
+        logger.info("No ML predictions yet (%s): fact_prediction will be empty", predictions)
+        con.execute(EMPTY_PREDICTIONS)
 
     sensors = pd.DataFrame(
         [
