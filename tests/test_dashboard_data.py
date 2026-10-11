@@ -152,6 +152,9 @@ def test_one_machine(scored):
         ("maintenance", "failure_repair: comp1"),
     ]
     assert len(data.machine_predictions(1, start, end, scored)) == 2
+    daily = data.machine_sensors(1, start, end, scored, daily=True)
+    assert len(daily) == 4 and set(daily["quality"]) == {"daily mean"}
+    assert (daily["timestamp"] == pd.Timestamp("2015-01-01")).all()  # midnight of the day
 
 
 def test_report_status_lists_missing_reports(tmp_path, monkeypatch):

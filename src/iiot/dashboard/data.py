@@ -294,18 +294,37 @@ def maintenance_plan(as_of: pd.Timestamp, path: Path | None = None) -> pd.DataFr
 
 
 def machine_sensors(
-    machine_id: int, start: pd.Timestamp, end: pd.Timestamp, path: Path | None = None
+    machine_id: int,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    path: Path | None = None,
+    daily: bool = False,
 ) -> pd.DataFrame:
-    """Hourly sensor readings of one machine (long format: timestamp, sensor, value, quality)."""
-    return query(
+    """Sensor readings of one machine (long format: timestamp, sensor, value, quality).
+
+    Hourly by default; with daily=True one daily mean per sensor (quality "daily mean"),
+    which keeps long windows light enough to chart."""
+    params = [
+        int(machine_id),
+        pd.Timestamp(start).to_pydatetime(),
+        pd.Timestamp(end).to_pydatetime(),
+    ]
+    if daily:
+        sql = """
+            SELECT date_trunc('day', timestamp) AS timestamp, sensor, avg(value) AS value,
+                   'daily mean' AS quality
+            FROM fact_sensor_reading
+            WHERE machine_id = ? AND timestamp BETWEEN ? AND ?
+            GROUP BY ALL
+            ORDER BY sensor, timestamp
         """
-        SELECT timestamp, sensor, value, quality FROM fact_sensor_reading
-        WHERE machine_id = ? AND timestamp BETWEEN ? AND ?
-        ORDER BY sensor, timestamp
-        """,
-        [int(machine_id), pd.Timestamp(start).to_pydatetime(), pd.Timestamp(end).to_pydatetime()],
-        path=path,
-    )
+    else:
+        sql = """
+            SELECT timestamp, sensor, value, quality FROM fact_sensor_reading
+            WHERE machine_id = ? AND timestamp BETWEEN ? AND ?
+            ORDER BY sensor, timestamp
+        """
+    return query(sql, params, path=path)
 
 
 def machine_events(

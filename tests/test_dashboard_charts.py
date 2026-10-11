@@ -49,3 +49,46 @@ def test_ranked_bars_have_labels_and_tooltips():
     assert bars["mark"]["type"] == "bar" and labels["mark"]["type"] == "text"
     assert bars["encoding"]["y"]["sort"] == "-x"
     assert "tooltip" in bars["encoding"] and "text" in labels["encoding"]
+
+
+EVENTS = pd.DataFrame(
+    {
+        "timestamp": pd.to_datetime(["2015-01-05 06:00", "2015-01-05 06:00", "2015-01-03 07:00"]),
+        "kind": ["failure", "maintenance", "error"],
+        "detail": ["comp1", "failure_repair: comp1", "error3"],
+    }
+)
+DOMAIN = ["2015-01-01T00:00:00", "2015-01-10T00:00:00"]
+
+
+def test_risk_timeline_shows_threshold_and_events_without_a_legend():
+    predictions = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2015-01-04 06:00", "2015-01-04 09:00"]),
+            "failure_risk": [0.1, 0.95],
+            "predicted_component": ["comp1", "comp1"],
+            "reason_1": [None, "voltage 24 h mean 190.0 vs normal 170.0 (+12%)"],
+        }
+    )
+    s = spec(charts.risk_timeline(predictions, EVENTS, 0.9, DOMAIN))
+    line, rule, events = s["layer"]
+    assert line["encoding"]["y"]["scale"]["domain"] == [0, 1]
+    assert "tooltip" in line["encoding"] and "tooltip" in events["encoding"]
+    assert events["encoding"]["color"]["legend"] is None
+    rows = s["datasets"][events["data"]["name"]]
+    assert sorted(r["kind"] for r in rows) == ["failure", "maintenance"]  # errors are not drawn
+
+
+def test_sensor_panels_one_chart_per_sensor_with_its_own_scale():
+    sensors = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2015-01-04"] * 4),
+            "sensor": ["volt", "rotate", "pressure", "vibration"],
+            "value": [170.0, 450.0, 100.0, 40.0],
+            "quality": ["ok"] * 4,
+        }
+    )
+    s = spec(charts.sensor_panels(sensors, EVENTS, DOMAIN))
+    titles = [panel["layer"][0]["title"] for panel in s["vconcat"]]
+    assert titles == ["Voltage", "Rotation", "Pressure", "Vibration"]
+    assert all(p["layer"][0]["encoding"]["y"]["scale"]["zero"] is False for p in s["vconcat"])

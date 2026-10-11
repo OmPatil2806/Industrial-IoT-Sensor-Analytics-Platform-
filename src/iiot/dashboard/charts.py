@@ -121,3 +121,95 @@ def daily_alerts(df: pd.DataFrame, selected_day: pd.Timestamp) -> alt.Chart:
         .encode(x="day:T")
     )
     return bars + marker
+
+
+SENSOR_TITLES = {
+    "volt": "Voltage",
+    "rotate": "Rotation",
+    "pressure": "Pressure",
+    "vibration": "Vibration",
+}
+
+
+def _event_rules(events: pd.DataFrame, legend: bool = True) -> alt.Chart:
+    """Vertical rules: failures (dark, dashed) and maintenance (muted, dotted)."""
+    marks = events[events["kind"].isin(["failure", "maintenance"])].drop_duplicates(
+        ["timestamp", "kind"]
+    )
+    return (
+        alt.Chart(marks)
+        .mark_rule(strokeWidth=1.5)
+        .encode(
+            x="timestamp:T",
+            color=alt.Color(
+                "kind:N",
+                scale=alt.Scale(domain=["failure", "maintenance"], range=["#52514e", MUTED]),
+                legend=alt.Legend(title=None, orient="top") if legend else None,
+            ),
+            strokeDash=alt.StrokeDash(
+                "kind:N",
+                scale=alt.Scale(domain=["failure", "maintenance"], range=[[6, 3], [2, 3]]),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("timestamp:T", title="When", format="%a %d %b %Y, %H:%M"),
+                alt.Tooltip("kind:N", title="Event"),
+            ],
+        )
+    )
+
+
+def risk_timeline(
+    predictions: pd.DataFrame, events: pd.DataFrame, threshold: float, domain: list
+) -> alt.LayerChart:
+    """Predicted failure risk every 3 hours, the alert threshold, failures and maintenance."""
+    line = (
+        alt.Chart(predictions, title="Predicted risk of failure within 24 h", height=170)
+        .mark_line(color=SERIES[0], strokeWidth=1.5, interpolate="step-after")
+        .encode(
+            x=alt.X("timestamp:T", title=None, scale=alt.Scale(domain=domain)),
+            y=alt.Y(
+                "failure_risk:Q",
+                title="risk",
+                scale=alt.Scale(domain=[0, 1]),
+                axis=alt.Axis(format="%"),
+            ),
+            tooltip=[
+                alt.Tooltip("timestamp:T", title="Scored at", format="%a %d %b %Y, %H:%M"),
+                alt.Tooltip("failure_risk:Q", title="Risk", format=".1%"),
+                alt.Tooltip("predicted_component:N", title="Component"),
+                alt.Tooltip("reason_1:N", title="Main reason"),
+            ],
+        )
+    )
+    rule = (
+        alt.Chart(pd.DataFrame({"threshold": [threshold]}))
+        .mark_rule(color=MUTED, strokeDash=[2, 2])
+        .encode(
+            y="threshold:Q",
+            tooltip=[alt.Tooltip("threshold:Q", title="Alert threshold", format=".1%")],
+        )
+    )
+    return alt.layer(line, rule, _event_rules(events, legend=False))
+
+
+def sensor_panels(sensors: pd.DataFrame, events: pd.DataFrame, domain: list) -> alt.VConcatChart:
+    """One small chart per sensor (own scale), with failures and maintenance marked."""
+    panels = []
+    for sensor, title in SENSOR_TITLES.items():
+        part = sensors[sensors["sensor"] == sensor]
+        line = (
+            alt.Chart(part, title=title, height=110)
+            .mark_line(color=SERIES[0], strokeWidth=1)
+            .encode(
+                x=alt.X("timestamp:T", title=None, scale=alt.Scale(domain=domain)),
+                y=alt.Y("value:Q", title=None, scale=alt.Scale(zero=False)),
+                tooltip=[
+                    alt.Tooltip("timestamp:T", title="When", format="%a %d %b %Y, %H:%M"),
+                    alt.Tooltip("value:Q", title=title, format=",.1f"),
+                    alt.Tooltip("quality:N", title="Quality"),
+                ],
+            )
+        )
+        panels.append(alt.layer(line, _event_rules(events)))
+    return alt.vconcat(*panels).resolve_scale(color="shared")

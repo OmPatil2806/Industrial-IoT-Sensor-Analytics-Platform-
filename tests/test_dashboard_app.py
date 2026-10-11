@@ -108,3 +108,19 @@ def test_risk_page_without_predictions_explains_what_to_run(built, point_setting
     app.switch_page("views/risk.py").run()
     assert not app.exception
     assert "iiot ml train" in app.warning[0].value
+
+
+def test_machine_detail_page(scored_warehouse, point_settings_at, tmp_path):
+    import json
+
+    (tmp_path / "models").mkdir(exist_ok=True)
+    (tmp_path / "models" / "failure_24h_model_card.json").write_text(json.dumps({"threshold": 0.9}))
+    point_settings_at(scored_warehouse.parent)
+    app = run_app()
+    app.switch_page("views/machine.py").run()
+    assert not app.exception
+    assert app.title[0].value == "🔧 Machine detail"
+    assert app.selectbox[0].value == 1  # the costliest machine
+    metrics = {m.label: m.value for m in app.metric}
+    assert metrics["Failures (2015)"] == "1"
+    assert metrics["Last failure"] == "05 Jan"
