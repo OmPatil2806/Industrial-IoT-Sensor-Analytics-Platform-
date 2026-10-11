@@ -18,6 +18,8 @@ def test_default_settings_load():
     assert settings.ml.exclude_features == ("plant_id", "line_id")
     assert settings.ml.mlflow_experiment == "iiot-predictive-maintenance"
     assert settings.paths.mlruns.name == "mlruns"
+    assert settings.insights.scenarios["expected"].catch_rate == 0.7
+    assert settings.insights.program_cost_per_year == 5_000_000
     assert settings.business.currency == "INR"
     assert settings.dataset.files["telemetry"] == "PdM_telemetry.csv"
     assert [p.plant_id for p in settings.plant_layout.plants] == ["PUNE", "CHENNAI"]
@@ -60,6 +62,16 @@ def test_iiot_config_env_var_overrides_path(write_config, monkeypatch):
         ({"ml": {"false_alarm_cost": -1}}, "false_alarm_cost"),
         ({"ml": {"rul_cap_hours": 0}}, "rul_cap_hours"),
         ({"ml": {"mlflow": {"experiment": " "}}}, "experiment"),
+        ({"insights": {"scenarios": {}}}, "at least one scenario"),
+        (
+            {"insights": {"scenarios": {"x": {"catch_rate": 1.5, "false_alarms_per_catch": 0}}}},
+            "catch_rate",
+        ),
+        (
+            {"insights": {"scenarios": {"x": {"catch_rate": 0.5, "false_alarms_per_catch": -1}}}},
+            "false_alarms_per_catch",
+        ),
+        ({"insights": {"program_cost_per_year": -1}}, "program_cost_per_year"),
         ({"logging": {"level": "LOUD"}}, "log level"),
         ({"silver": {"stuck_min_run": 1}}, "stuck_min_run"),
         ({"gold": {"feature_step_hours": 0}}, "feature_step_hours"),

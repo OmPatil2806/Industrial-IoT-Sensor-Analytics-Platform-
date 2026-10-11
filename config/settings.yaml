@@ -127,6 +127,20 @@ ml:
     experiment: iiot-predictive-maintenance
 
 # -------------------------------------------------------------------
+# Business insights (Phase 9): assumptions for the annual business case
+# -------------------------------------------------------------------
+insights:
+  # The models catch 97% of failures on this synthetic data; a real plant would catch
+  # fewer and raise more false alarms. Each scenario: share of failure events caught in
+  # time, and false alarms per caught failure. ("as tested" is added from the model card.)
+  scenarios:
+    conservative: {catch_rate: 0.5, false_alarms_per_catch: 1.0}
+    expected: {catch_rate: 0.7, false_alarms_per_catch: 0.5}
+  # Yearly cost of running predictive maintenance: sensors, software, data team (illustrative).
+  program_cost_per_year: 5000000
+  inspection_hours: 2      # technician hours per inspection triggered by an alert
+
+# -------------------------------------------------------------------
 # Logging
 # -------------------------------------------------------------------
 logging:

@@ -124,6 +124,19 @@ class ML:
 
 
 @dataclass(frozen=True)
+class Scenario:
+    catch_rate: float
+    false_alarms_per_catch: float
+
+
+@dataclass(frozen=True)
+class Insights:
+    scenarios: dict[str, Scenario]
+    program_cost_per_year: float
+    inspection_hours: float
+
+
+@dataclass(frozen=True)
 class Logging:
     level: str
     file_name: str
@@ -140,6 +153,7 @@ class Settings:
     business: Business
     plant_layout: PlantLayout
     ml: ML
+    insights: Insights
     logging: Logging
 
 
@@ -199,6 +213,20 @@ def _validate(settings: Settings) -> None:
         raise ValueError("ml.rul_cap_hours must be positive")
     if not ml.mlflow_experiment.strip():
         raise ValueError("ml.mlflow.experiment must not be empty")
+    insights = settings.insights
+    if not insights.scenarios:
+        raise ValueError("insights.scenarios must contain at least one scenario")
+    for name, scenario in insights.scenarios.items():
+        if not 0 < scenario.catch_rate <= 1:
+            raise ValueError(f"insights.scenarios.{name}.catch_rate must be in (0, 1]")
+        if scenario.false_alarms_per_catch < 0:
+            raise ValueError(
+                f"insights.scenarios.{name}.false_alarms_per_catch must not be negative"
+            )
+    if insights.program_cost_per_year < 0 or insights.inspection_hours < 0:
+        raise ValueError(
+            "insights: program_cost_per_year and inspection_hours must not be negative"
+        )
     if settings.logging.level.upper() not in (
         "DEBUG",
         "INFO",
@@ -243,6 +271,17 @@ def load_settings(path: Path | str | None = None) -> Settings:
             rul_cap_hours=ml["rul_cap_hours"],
             exclude_features=tuple(ml["exclude_features"]),
             mlflow_experiment=ml["mlflow"]["experiment"],
+        ),
+        insights=Insights(
+            scenarios={
+                name: Scenario(
+                    catch_rate=float(v["catch_rate"]),
+                    false_alarms_per_catch=float(v["false_alarms_per_catch"]),
+                )
+                for name, v in raw["insights"]["scenarios"].items()
+            },
+            program_cost_per_year=float(raw["insights"]["program_cost_per_year"]),
+            inspection_hours=float(raw["insights"]["inspection_hours"]),
         ),
         logging=Logging(**raw["logging"]),
     )
