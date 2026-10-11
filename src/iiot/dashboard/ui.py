@@ -30,6 +30,8 @@ def cached(func):
 status = cached(data.status)
 report_status = cached(data.report_status)
 model_cards = cached(data.model_cards)
+load_report = cached(data.load_report)
+pipeline_runs = cached(data.pipeline_runs)
 plants = cached(data.plants)
 fleet_kpis = cached(data.fleet_kpis)
 fleet_monthly = cached(data.fleet_monthly)

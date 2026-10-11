@@ -17,7 +17,13 @@ def point_settings_at(write_config, monkeypatch, tmp_path):
 
     def _point(warehouse_dir) -> None:
         path = write_config(
-            {"paths": {"warehouse": str(warehouse_dir), "models": str(tmp_path / "models")}}
+            {
+                "paths": {
+                    "warehouse": str(warehouse_dir),
+                    "models": str(tmp_path / "models"),
+                    "mlruns": str(tmp_path / "mlruns"),
+                }
+            }
         )
         monkeypatch.setenv("IIOT_CONFIG", str(path))
         config.get_settings.cache_clear()
@@ -57,16 +63,17 @@ def test_plant_filter_changes_the_numbers(built, point_settings_at):
     assert metrics["MTBF"] == "-"  # undefined without failures
 
 
-def test_platform_status_page(built, point_settings_at):
+def test_health_page(built, point_settings_at):
     path, _ = built
     point_settings_at(path.parent)
     app = run_app()
-    app.switch_page("views/home.py").run()
+    app.switch_page("views/health.py").run()
     assert not app.exception
-    assert app.title[0].value.startswith("🏭 Industrial IoT Sensor Analytics")
+    assert app.title[0].value == "✅ Model & data health"
     metrics = {m.label: m.value for m in app.metric}
     assert (metrics["Machines"], metrics["Failures"]) == ("2", "2")
-    assert any("not been trained" in i.value for i in app.info)  # no predictions yet
+    assert any("not been trained" in i.value for i in app.info)  # no model cards yet
+    assert any("No tracked pipeline runs" in i.value for i in app.info)
 
 
 def test_home_page_without_a_warehouse_explains_what_to_run(tmp_path, point_settings_at):

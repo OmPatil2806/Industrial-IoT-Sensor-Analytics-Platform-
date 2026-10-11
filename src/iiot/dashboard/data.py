@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
+import iiot.ml  # noqa: F401  (sets MLflow's quiet-logging options before MLflow is imported)
 from iiot.config import get_settings
 from iiot.model.warehouse import connect, table_counts, view_names, warehouse_path
 from iiot.pipeline_tracking import report_files
@@ -87,6 +88,79 @@ def report_status() -> pd.DataFrame:
         else:
             rows.append({"layer": layer, "passed": None, "generated_at": None, "file": str(file)})
     return pd.DataFrame(rows)
+
+
+def report_checks(report: dict) -> pd.DataFrame:
+    """The individual checks inside one quality report: check, passed.
+
+    Layers write their reports differently: a list of results (raw), one entry per table
+    (Bronze), *_check entries (Silver) or a "checks" mapping (Gold, warehouse, ML)."""
+    rows = []
+    if isinstance(report.get("results"), list):
+        rows = [
+            {
+                "check": f"{r.get('table', '')}: {r.get('check', '')}".strip(": "),
+                "passed": r["passed"],
+            }
+            for r in report["results"]
+        ]
+    elif isinstance(report.get("checks"), dict):
+        rows = [
+            {"check": name, "passed": bool(c.get("passed")) if isinstance(c, dict) else bool(c)}
+            for name, c in report["checks"].items()
+        ]
+    else:
+        rows = [
+            {"check": name, "passed": bool(value["passed"])}
+            for name, value in report.items()
+            if name.endswith("_check") and isinstance(value, dict) and "passed" in value
+        ]
+        for table, value in (report.get("tables") or {}).items():
+            if isinstance(value, dict) and "passed" in value:
+                rows.append({"check": f"table {table}", "passed": bool(value["passed"])})
+    return pd.DataFrame(rows, columns=["check", "passed"])
+
+
+def load_report(layer: str) -> dict | None:
+    file = report_files()[layer]
+    return json.loads(file.read_text(encoding="utf-8")) if file.exists() else None
+
+
+def pipeline_runs(mlruns_dir: Path | None = None, limit: int = 20) -> pd.DataFrame:
+    """The latest `iiot run` executions recorded in MLflow (newest first)."""
+    import mlflow
+    from mlflow import MlflowClient
+
+    from iiot.ml.tracking import tracking_uri
+    from iiot.pipeline_tracking import EXPERIMENT
+
+    mlruns_dir = Path(mlruns_dir or get_settings().paths.mlruns)
+    columns = ["started", "minutes", "passed", "steps", "git_commit", "status"]
+    if not (mlruns_dir / "mlflow.db").exists():
+        return pd.DataFrame(columns=columns)
+    mlflow.set_tracking_uri(tracking_uri(mlruns_dir))
+    experiment = MlflowClient().get_experiment_by_name(EXPERIMENT)
+    if experiment is None:
+        return pd.DataFrame(columns=columns)
+    runs = MlflowClient().search_runs(
+        [experiment.experiment_id], order_by=["attributes.start_time DESC"], max_results=limit
+    )
+    return pd.DataFrame(
+        [
+            {
+                "started": pd.Timestamp(r.info.start_time, unit="ms", tz="UTC"),
+                "minutes": (r.info.end_time - r.info.start_time) / 60000
+                if r.info.end_time
+                else None,
+                "passed": bool(r.data.metrics.get("pipeline_passed", 0)),
+                "steps": len(r.data.params.get("steps", "").split(",")),
+                "git_commit": r.data.tags.get("git_commit", ""),
+                "status": r.info.status,
+            }
+            for r in runs
+        ],
+        columns=columns,
+    )
 
 
 def model_cards(models_dir: Path | None = None) -> dict[str, dict]:

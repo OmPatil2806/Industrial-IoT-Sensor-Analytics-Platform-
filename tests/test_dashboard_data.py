@@ -176,3 +176,53 @@ def test_missing_warehouse(tmp_path):
     assert not data.warehouse_exists(tmp_path / "none.duckdb")
     with pytest.raises(FileNotFoundError, match="iiot model build"):
         data.status(tmp_path / "none.duckdb")
+
+
+@pytest.mark.parametrize(
+    ("report", "expected"),
+    [
+        (  # raw: a list of results
+            {"passed": True, "results": [{"table": "errors", "check": "columns", "passed": True}]},
+            [("errors: columns", True)],
+        ),
+        (  # Bronze: one entry per table
+            {"passed": False, "tables": {"telemetry": {"passed": False, "rows": 5}}},
+            [("table telemetry", False)],
+        ),
+        (  # Silver: *_check entries
+            {"passed": True, "manifest_check": {"passed": True}, "telemetry": {"rows": 1}},
+            [("manifest_check", True)],
+        ),
+        (  # Gold, warehouse, ML: a "checks" mapping
+            {
+                "passed": False,
+                "checks": {"no_leakage": {"passed": True}, "views": {"passed": False}},
+            },
+            [("no_leakage", True), ("views", False)],
+        ),
+    ],
+    ids=["raw", "bronze", "silver", "checks"],
+)
+def test_report_checks_understand_every_layer(report, expected):
+    checks = data.report_checks(report)
+    assert list(zip(checks["check"], checks["passed"], strict=True)) == expected
+
+
+def test_pipeline_runs_from_mlflow(tmp_path, monkeypatch):
+    from iiot import pipeline_tracking
+    from iiot.ml import tracking
+
+    mlruns = tmp_path / "mlruns"
+    assert data.pipeline_runs(mlruns).empty  # nothing tracked yet
+    monkeypatch.setattr(pipeline_tracking, "report_files", lambda: {})
+    original_setup = tracking.setup
+    monkeypatch.setattr(
+        tracking, "setup", lambda experiment=None: original_setup(mlruns, experiment)
+    )
+    with pipeline_tracking.track_pipeline(["silver-build", "gold-build"]) as record:
+        record("silver-build", 1.0, True)
+        record("gold-build", 1.0, True)
+    runs = data.pipeline_runs(mlruns)
+    assert len(runs) == 1
+    assert runs.loc[0, "passed"] and runs.loc[0, "steps"] == 2
+    assert runs.loc[0, "status"] == "FINISHED"
