@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import pytest
 
 from iiot import cli
@@ -16,6 +18,8 @@ def calls(monkeypatch):
         silver_passed: bool
         gold_passed: bool
         model_passed: bool
+        ml_passed: bool
+        tracked: list
 
     recorded = Calls()
 
@@ -70,6 +74,27 @@ def calls(monkeypatch):
         "show_report",
         lambda: recorded.append("model-report") or {"passed": recorded.model_passed},
     )
+
+    def fake_ml(name):
+        def step(args):
+            recorded.append(name)
+            if not recorded.ml_passed:
+                raise cli.StepFailed("ML checks failed")
+
+        return step
+
+    for name in ("ml-train", "ml-score", "ml-report"):
+        monkeypatch.setitem(cli.STEPS, name, (fake_ml(name), cli.STEPS[name][1]))
+
+    @contextmanager
+    def fake_tracker(steps):
+        run = {"steps": steps, "results": {}}
+        recorded.tracked.append(run)
+        yield lambda step, seconds, passed: run["results"].__setitem__(step, passed)
+
+    monkeypatch.setattr(cli.pipeline_tracking, "track_pipeline", fake_tracker)
+    recorded.ml_passed = True
+    recorded.tracked = []
     recorded.silver_passed = True
     recorded.model_passed = True
     recorded.gold_passed = True
@@ -143,6 +168,7 @@ def test_run_executes_the_full_pipeline_in_order(calls):
         "silver-build",
         "gold-build",
         "model-build",
+        "ml-train",
     ]
 
 
@@ -260,3 +286,44 @@ def test_locked_warehouse_returns_error_code(calls, monkeypatch):
 
     monkeypatch.setattr(cli.model_report, "build_model", locked)
     assert cli.main(["model", "build"]) == 1
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [(["train"], ["ml-train"]), (["score"], ["ml-score"]), (["report"], ["ml-report"])],
+)
+def test_ml_commands(calls, command, expected):
+    assert cli.main(["ml", *command]) == 0
+    assert calls == expected
+    assert calls.tracked == []  # only `iiot run` is tracked in MLflow
+
+
+def test_failed_ml_checks_fail_the_full_run(calls):
+    calls.ml_passed = False
+    assert cli.main(["run"]) == 1
+    assert calls[-1] == "ml-train"
+
+
+def test_run_skip_ml_stops_after_the_warehouse(calls):
+    assert cli.main(["run", "--skip-ml"]) == 0
+    assert calls[-1] == "model-build"
+
+
+def test_run_is_tracked_with_every_step_result(calls):
+    assert cli.main(["run"]) == 0
+    [run] = calls.tracked
+    assert run["steps"] == cli.FULL_PIPELINE
+    assert run["results"] == {step: True for step in cli.FULL_PIPELINE}
+
+
+def test_failed_step_is_tracked_as_failed(calls):
+    calls.gold_passed = False
+    assert cli.main(["run"]) == 1
+    [run] = calls.tracked
+    assert run["results"]["gold-build"] is False
+    assert "model-build" not in run["results"]
+
+
+def test_run_without_tracking(calls):
+    assert cli.main(["run", "--no-tracking"]) == 0
+    assert calls.tracked == []

@@ -2,6 +2,7 @@
 
 Examples:
     iiot run                     # full pipeline: data -> Bronze -> Silver -> Gold -> warehouse
+                                 #   -> ML (tracked in MLflow; --skip-ml, --no-tracking)
     iiot data prepare            # download -> validate -> inject issues -> reference data
     iiot data download --force   # re-download the Kaggle dataset
     iiot data validate           # run the raw data contract only
@@ -13,6 +14,9 @@ Examples:
     iiot gold report             # show the latest Gold report
     iiot model build             # build the DuckDB star-schema warehouse + model checks
     iiot model report            # show the latest model report
+    iiot ml train                # baselines, models, explanations, scoring, ML report
+    iiot ml score                # re-score every row with the @champion models
+    iiot ml report               # show the latest ML report
 
 Also available as `python -m iiot ...`.
 """
@@ -22,7 +26,9 @@ from __future__ import annotations
 import argparse
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 
+from iiot import pipeline_tracking
 from iiot.bronze import pipeline as bronze_pipeline
 from iiot.bronze import report as bronze_report
 from iiot.bronze.ingest import BronzeError
@@ -96,6 +102,29 @@ def _model_report(args: argparse.Namespace) -> None:
         raise StepFailed("The latest model report did not pass.")
 
 
+def _ml_train(args: argparse.Namespace) -> None:
+    from iiot.ml.pipeline import train_all  # imports MLflow: only when needed
+
+    if not train_all()["passed"]:
+        raise StepFailed("ML checks failed - see the FAIL lines above.")
+
+
+def _ml_score(args: argparse.Namespace) -> None:
+    from iiot.ml.report import build_ml_report
+    from iiot.ml.score import score_all
+
+    score_all()
+    if not build_ml_report()["passed"]:
+        raise StepFailed("ML checks failed - see the FAIL lines above.")
+
+
+def _ml_report(args: argparse.Namespace) -> None:
+    from iiot.ml.report import show_ml_report
+
+    if not show_ml_report()["passed"]:
+        raise StepFailed("The latest ML report did not pass.")
+
+
 Step = tuple[Callable[[argparse.Namespace], None], str]
 
 # Every pipeline step, keyed by name. Groups and `iiot run` pick steps from here.
@@ -112,13 +141,24 @@ STEPS: dict[str, Step] = {
     "gold-report": (_gold_report, "show the latest Gold report"),
     "model-build": (_model_build, "build the star-schema warehouse and check it"),
     "model-report": (_model_report, "show the latest model report"),
+    "ml-train": (_ml_train, "train, explain, score and check the ML models (MLflow)"),
+    "ml-score": (_ml_score, "score every row with the @champion models and check them"),
+    "ml-report": (_ml_report, "show the latest ML report"),
 }
 DATA_STEPS = ["download", "validate", "inject", "reference"]
 BRONZE_STEPS = ["bronze-ingest", "bronze-report"]
-FULL_PIPELINE = DATA_STEPS + BRONZE_STEPS + ["silver-build", "gold-build", "model-build"]
+FULL_PIPELINE = (
+    DATA_STEPS + BRONZE_STEPS + ["silver-build", "gold-build", "model-build", "ml-train"]
+)
 
 
-def _run_steps(names: list[str], args: argparse.Namespace) -> int:
+def _run_steps(names: list[str], args: argparse.Namespace, track: bool = False) -> int:
+    tracker = pipeline_tracking.track_pipeline(names) if track else nullcontext(None)
+    with tracker as record:
+        return _run_tracked(names, args, record)
+
+
+def _run_tracked(names: list[str], args: argparse.Namespace, record) -> int:
     total_start = time.perf_counter()
     for i, name in enumerate(names, 1):
         func, description = STEPS[name]
@@ -134,10 +174,14 @@ def _run_steps(names: list[str], args: argparse.Namespace) -> int:
             WarehouseLockedError,
         ) as e:
             logger.error("Step '%s' failed: %s", name, e)
+            if record:
+                record(name, time.perf_counter() - start, False)
             if i < len(names):
                 logger.error("Stopped. Remaining steps not run: %s", ", ".join(names[i:]))
             return 1
         logger.info("[%d/%d] %s done in %.1fs", i, len(names), name, time.perf_counter() - start)
+        if record:
+            record(name, time.perf_counter() - start, True)
     if len(names) > 1:
         logger.info("All %d steps done in %.1fs", len(names), time.perf_counter() - total_start)
     return 0
@@ -150,8 +194,10 @@ def build_parser() -> argparse.ArgumentParser:
     groups = parser.add_subparsers(dest="group", required=True)
 
     run = groups.add_parser(
-        "run", help="run the full pipeline (data -> Bronze -> Silver -> Gold -> warehouse)"
+        "run", help="run the full pipeline (data -> Bronze -> Silver -> Gold -> warehouse -> ML)"
     )
+    run.add_argument("--skip-ml", action="store_true", help="stop after the warehouse")
+    run.add_argument("--no-tracking", action="store_true", help="do not record this run in MLflow")
     run.add_argument("--force-download", action="store_true", help="re-download the dataset")
     run.add_argument("--force-bronze", action="store_true", help="reload every Bronze table")
 
@@ -191,16 +237,23 @@ def build_parser() -> argparse.ArgumentParser:
     model_cmds = model.add_subparsers(dest="command", required=True)
     model_cmds.add_parser("build", help=STEPS["model-build"][1])
     model_cmds.add_parser("report", help=STEPS["model-report"][1])
+
+    ml = groups.add_parser("ml", help="train, score and check the ML models (Phase 7)")
+    ml_cmds = ml.add_subparsers(dest="command", required=True)
+    ml_cmds.add_parser("train", help=STEPS["ml-train"][1])
+    ml_cmds.add_parser("score", help=STEPS["ml-score"][1])
+    ml_cmds.add_parser("report", help=STEPS["ml-report"][1])
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.group == "run":
-        names = FULL_PIPELINE
+        names = [n for n in FULL_PIPELINE if not (args.skip_ml and n == "ml-train")]
+        return _run_steps(names, args, track=not args.no_tracking)
     elif args.group == "data":
         names = DATA_STEPS if args.command == "prepare" else [args.command]
-    else:  # bronze, silver, gold or model
+    else:  # bronze, silver, gold, model or ml
         names = [f"{args.group}-{args.command}"]
     return _run_steps(names, args)
 

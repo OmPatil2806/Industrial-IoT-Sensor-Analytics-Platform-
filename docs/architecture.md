@@ -199,14 +199,18 @@ A DuckDB warehouse in one file, `data/warehouse/iiot.duckdb`, built by `iiot mod
 
 | Model | Task | Output |
 |---|---|---|
-| Anomaly detection | Unsupervised (Isolation Forest) | anomaly score per machine-hour |
-| Failure prediction | Binary classification (gradient boosting) | probability of failure within 24h |
-| Remaining useful life | Regression | hours until failure |
+| `iiot-failure-24h` | Binary classification (HistGradientBoosting) | probability of failure within 24 h, alert at a cost-based threshold |
+| `iiot-component` | One classifier per component (MultiOutputClassifier) | risk per component; the highest is the diagnosis |
+| `iiot-anomaly` | Unsupervised (imputer + scaler + Isolation Forest) on sensor features of healthy periods | anomaly score; flag at the 99th percentile of healthy validation rows |
 
 **Evaluation rules:**
-- **Time-based split** at `ml.train_end_date`: train on the past and test on the future. A random split would leak future information into training and overstate performance.
-- **Imbalance-aware metrics:** failures are rare, so precision, recall, F1 and PR-AUC matter more than accuracy.
-- **Explainability:** feature importance / SHAP, so maintenance teams understand *why* a machine is flagged.
+- **Time-based split:** fit (Jan–Jul), validation (Aug–Sep, for tuning and thresholds), development (Jan–Sep, for the final refit) and test (Oct–Dec, used once). Rows whose 24 h label window crosses a split are dropped. A leakage guard rejects label-like feature names.
+- **Business metrics:** failure events caught, lead time, inspections and false alarms per machine-month (an inspection covers the next 24 h, so a model cannot alert permanently for the price of one inspection), and net saving in INR.
+- **Baselines and promotion:** `never-fail` and the `error5` rule for failures, the most frequent component for diagnosis, a minimum lift for anomalies. A registered model gets the `@champion` alias only if it beats its baseline on test.
+- **Sanity checks:** the failure model is also trained on shuffled labels with every run; its validation PR-AUC must stay near chance.
+- **Explainability:** permutation importance per input and per input group; per alert, each group is reset to the machine's normal values and the groups that lower the risk most are the reasons.
+- **Tracking:** MLflow (local SQLite) records parameters, metrics, charts, model cards, git commit and data fingerprint; the registry versions the models. Models are saved with skops, trusting only the scikit-learn tree types.
+- **Serving:** `iiot.ml.score` scores every Gold feature row with the champions into `predictions.parquet` → `fact_prediction`; `ml_report.json` checks completeness, thresholds, reproducibility and that the stored test predictions reproduce the model card.
 
 ### 3.7 Dashboard
 
@@ -227,7 +231,7 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **Logging** | `iiot.utils.logger.get_logger(__name__)`. Writes to console and `logs/pipeline.log` (rotating, 5 MB × 3). Level is set in config. |
 | **Testing** | pytest. Tests use temporary config copies and never touch real data or logs. |
 | **Code quality** | ruff for linting and formatting (config in `pyproject.toml`). |
-| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`, `iiot silver build`, `iiot gold build`, `iiot model build`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
+| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`, `iiot silver build`, `iiot gold build`, `iiot model build`, `iiot ml train`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
 | **Version control** | Code, documentation and the 5 source CSVs are committed. Generated data (dirty copy, reference data, Bronze/Silver/Gold), models, logs and secrets are excluded via `.gitignore`, because they can be regenerated with one command. |
 
 ---
@@ -263,6 +267,7 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | `iiot.silver` | ✅ Done | Bronze → Silver: typing, cleaning rules, event/master tables, quality report with proofs |
 | `iiot.gold` | ✅ Done | Sensor and event features, labels, ML dataset, KPIs, quality checks |
 | `iiot.model` | ✅ Done | DuckDB star-schema warehouse: SQL scripts, builder, analytical views, model checks |
-| `iiot.ml` | ⏳ Phase 7 | Train, evaluate and score models |
+| `iiot.ml` | ✅ Done | Splits, evaluation, baselines, failure / component / anomaly models, explanations, scoring, ML report, MLflow tracking |
+| `iiot.pipeline_tracking` | ✅ Done | Records every `iiot run` in MLflow (steps, checks, row counts, reports) |
 | `dashboard/` | ⏳ Phase 8 | Streamlit app |
 | `reports/` | ⏳ Phase 9 | Business insights report |

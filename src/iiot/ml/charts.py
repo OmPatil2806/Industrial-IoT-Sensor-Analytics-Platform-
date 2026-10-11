@@ -7,15 +7,11 @@ chart, a legend whenever there are two or more series, and text in ink colours.
 
 from __future__ import annotations
 
-import matplotlib
-
-matplotlib.use("Agg")  # no display needed: charts are written to files
-
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-from matplotlib.figure import Figure  # noqa: E402
-from sklearn.metrics import precision_recall_curve  # noqa: E402
+import numpy as np
+import pandas as pd
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from sklearn.metrics import precision_recall_curve
 
 SERIES = ["#2a78d6", "#eb6834"]  # categorical slots 1 and 2, validated for colour blindness
 SURFACE = "#fcfcfb"
@@ -27,8 +23,11 @@ AXIS = "#c3c2b7"
 LAKH = 1e5
 
 
-def _figure(title: str) -> tuple[Figure, plt.Axes]:
-    fig, ax = plt.subplots(figsize=(6.4, 4.0), dpi=120)
+def _figure(title: str) -> tuple[Figure, Axes]:
+    # A bare Figure (not pyplot) needs no display backend and never changes the backend
+    # of the session, so notebooks that import this module still show their charts.
+    fig = Figure(figsize=(6.4, 4.0), dpi=120)
+    ax = fig.add_subplot()
     fig.patch.set_facecolor(SURFACE)
     ax.set_facecolor(SURFACE)
     ax.set_title(title, color=INK, fontsize=11, fontweight="bold", loc="left")

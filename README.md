@@ -189,14 +189,14 @@ Four views (`v_fleet_monthly`, `v_machine_health`, `v_component_reliability`, `v
 
 | Model | Type | Question Answered | Algorithm |
 |---|---|---|---|
-| Anomaly Detection | Unsupervised | Is this machine behaving abnormally right now? | Isolation Forest |
-| Failure Prediction | Classification | Will it fail in the next 24 hours? | XGBoost / LightGBM |
-| Remaining Useful Life | Regression | How many hours until failure? | Gradient Boosting Regressor |
-| Failure Type *(optional)* | Multi-class | Which component is likely to fail? | Random Forest |
+| Failure Prediction | Classification | Will it fail in the next 24 hours? | Gradient boosting (scikit-learn) |
+| Component Diagnosis | Multi-label | Which component is likely to fail? | Gradient boosting, one per component |
+| Anomaly Detection | Unsupervised | Is the sensor behaviour unusual right now? | Isolation Forest |
 
-- **Time-based train/test split** (train on the past, test on the future) to prevent data leakage.
-- Metrics: Precision, Recall, F1, ROC-AUC, MAE (RUL).
-- Explainability with feature importance / SHAP.
+- **Time-based split** (train on the past, tune on validation, test once on the future) to prevent leakage.
+- Metrics that suit rare failures and the business: PR-AUC, failures caught, false alarms, net saving in INR.
+- Explainability: permutation importance and plain-language reasons for every alert.
+- **MLflow** tracks every run and registers each model; a model becomes `@champion` only if it beats its baseline.
 
 ### 7️⃣ Dashboard
 
@@ -224,7 +224,8 @@ Four views (`v_fleet_monthly`, `v_machine_health`, `v_component_reliability`, `v
 | Language | Python 3.11 |
 | Data Engineering | pandas, Parquet (PyArrow), DuckDB |
 | Data Quality | Custom validation rules |
-| Machine Learning | scikit-learn, XGBoost / LightGBM, SHAP |
+| Machine Learning | scikit-learn (gradient boosting, Isolation Forest, permutation importance) |
+| Experiment Tracking | MLflow (runs, metrics, charts, model registry) |
 | Dashboard | Streamlit |
 | API *(optional)* | FastAPI |
 | Testing & Quality | pytest, ruff |
@@ -258,11 +259,13 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 │   ├── silver/              # typing, cleaning rules, event/master tables, quality report
 │   ├── gold/                # features, labels, ML dataset, KPIs, quality checks
 │   ├── model/               # warehouse builder, SQL scripts (sql/), model checks
-│   └── ml/                  # (Phase 7)
+│   ├── pipeline_tracking.py # records every `iiot run` in MLflow
+│   └── ml/                  # splits, evaluation, baselines, models, explanations, scoring, ML report
 ├── dashboard/               # (Phase 8) Streamlit app
 ├── notebooks/
 │   ├── 01_eda_raw_data.ipynb        # exploratory data analysis of the raw data
-│   └── 02_explore_warehouse.ipynb   # browse the warehouse: tables, views, charts, SQL
+│   ├── 02_explore_warehouse.ipynb   # browse the warehouse: tables, views, charts, SQL
+│   └── 03_ml_results.ipynb          # ML results on the test period, with baselines and costs
 ├── reports/                 # (Phase 9) business insights
 ├── models/                  # trained models (not committed)
 ├── tests/                   # pytest test suite
@@ -283,7 +286,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 - [x] **Phase 4: Silver layer:** typing, cleaning rules, quality flags, validated tables, data-quality report with proofs
 - [x] **Phase 5: Gold layer:** features, labels, ML dataset, KPIs, leakage and reconciliation checks
 - [x] **Phase 6: Data model:** DuckDB star schema (5 dimensions, 5 facts), analytical views, example queries, model checks
-- [ ] **Phase 7: Machine learning:** anomaly detection, failure prediction, RUL
+- [x] **Phase 7: Machine learning:** failure prediction, component diagnosis, anomaly detection, explanations, MLflow tracking and registry, predictions in the warehouse
 - [ ] **Phase 8: Dashboard:** Streamlit multi-page app
 - [ ] **Phase 9: Business insights:** cost, downtime and maintenance recommendations
 - [ ] **Phase 10: Testing, CI & final documentation**
@@ -368,7 +371,7 @@ Generated files are reproducible (fixed seeds in `config/settings.yaml`) and are
 ```bash
 iiot run
 ```
-Runs every step built so far, in order: data preparation (4 steps), Bronze ingest and Bronze report, the Silver build, the Gold build and the warehouse build. On the real data the whole run takes about 35 seconds. It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
+Runs every step, in order: data preparation (4 steps), Bronze ingest and Bronze report, the Silver build, the Gold build, the warehouse build and the ML phase (train, explain, score, check). On the real data the whole run takes about 4 minutes (35 seconds with `--skip-ml`). Each run is recorded in MLflow (experiment `iiot-data-pipeline`; `--no-tracking` to skip). It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
 
 ### Explore the data
 Open [`notebooks/01_eda_raw_data.ipynb`](notebooks/01_eda_raw_data.ipynb) in VS Code or Jupyter, select the `.venv` kernel and run all cells.
@@ -563,6 +566,48 @@ More questions are answered in [`docs/example_queries.sql`](docs/example_queries
 - **DBeaver (optional GUI):** create a DuckDB connection to `data/warehouse/iiot.duckdb` and tick *Read-only*.
 
 > Close notebooks and DBeaver connections before running `iiot model build` or `iiot run`. Otherwise the build cannot replace the file and stops with a message telling you to close them.
+
+---
+
+## 🤖 Machine Learning (Phase 7)
+
+```bash
+iiot ml train     # baselines, models, explanations, scoring, ML report (about 4 minutes)
+iiot ml score     # re-score every row with the @champion models
+iiot ml report    # show the latest ML report (PASSED / FAILED)
+```
+
+### Rules
+- **Split by time:** fit on Jan–Jul 2015, tune and choose thresholds on Aug–Sep, refit on Jan–Sep, and evaluate **once** on Oct–Dec (the test set). Plant and line are left out of the features (they were assigned randomly).
+- **Baselines first:** every model must beat a simple rule on the test set to become `@champion`.
+- **Business metrics:** an alert triggers an inspection (₹20,000 if false); a caught failure saves the difference between unplanned and planned cost. The alert threshold is the one with the highest net saving on validation.
+
+### Results on the test set (Oct–Dec 2015)
+| Model | Result | Baseline |
+|---|---|---|
+| **Failure in 24 h** | 166 / 171 failures caught, 1 false alarm, **₹6.41 cr net saving (97% of possible)** | error5 rule: 43 / 171 caught, 40 false alarms, ₹2.16 cr |
+| **Component** | right component ranked first **100%** of the time | always the most frequent component: 42% |
+| **Anomaly** (no labels) | 13.0% of rows flagged in the 48 h before a failure vs 1.1% in normal operation (12× lift) | designed 1% in normal operation |
+
+**Each component has its own warning signature** (from the explanations): comp1 = voltage + error1, comp2 = rotation + error2/3, comp3 = pressure + error4, comp4 = vibration + error5. Every alert carries up to three reasons, for example *"vibration 24 h mean 48.9 vs normal 40.3 (+21%)"*.
+
+> The data are Microsoft's synthetic Azure PdM dataset, whose failures follow strong patterns, so the scores are higher than a real plant would see. Leakage was checked four ways (no single giveaway feature, shuffled labels score at chance, the signal fades further ahead, the Gold leakage test); the shuffled-label check runs with every training.
+
+### Outputs
+- `data/gold/predictions.parquet` and the warehouse table **`fact_prediction`**: failure risk, alert, component risks, anomaly score and the alert reasons for every machine every 3 hours, with an `out_of_sample` flag. The view **`v_machine_risk_now`** lists each machine's latest risk, riskiest first.
+- `models/*_model_card.json`: one model card per model.
+- `models/ml_report.json`: six checks: champions, data unchanged since training, predictions complete, thresholds applied, reproducible scores, and test results matching the model card.
+
+### MLflow
+```bash
+mlflow ui --backend-store-uri sqlite:///mlruns/mlflow.db --workers 1
+```
+Open http://127.0.0.1:5000 (`--workers 1` avoids a Windows socket error).
+- **iiot-predictive-maintenance:** every model run with parameters, metrics, charts, model cards, git commit and data fingerprint.
+- **iiot-data-pipeline:** every `iiot run` with step times, quality checks and row counts.
+- **Models:** `iiot-failure-24h`, `iiot-component`, `iiot-anomaly`, each with its `@champion` version.
+
+Results with charts: [`notebooks/03_ml_results.ipynb`](notebooks/03_ml_results.ipynb).
 
 ---
 
