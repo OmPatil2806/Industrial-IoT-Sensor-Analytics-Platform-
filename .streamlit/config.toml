@@ -1,0 +1,9 @@
+# Streamlit settings for the dashboard (used when it is started from the project folder).
+[theme]
+primaryColor = "#2a78d6"   # categorical slot 1 of the project's validated palette
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"

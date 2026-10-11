@@ -8,3 +8,4 @@ kaggle>=1.7        # downloads the Azure Predictive Maintenance dataset
 scikit-learn>=1.5  # machine learning models: gradient boosting, Isolation Forest (Phase 7)
 mlflow>=3.0        # experiment tracking and model registry (Phase 7)
 matplotlib>=3.8    # charts logged with each ML run (Phase 7)
+streamlit>=1.40    # dashboard web app, with Altair charts (Phase 8)

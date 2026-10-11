@@ -156,7 +156,8 @@ def describe(feature: str, value: float, normal: float) -> str:
     """Plain-language description of one input against the machine's normal value."""
     if feature.startswith("error"):
         what = "errors (all types)" if feature.startswith("errors_total") else feature.split("_")[0]
-        return f"{what} raised {value:.0f} times in the last 24 h (normal {normal:.0f})"
+        times = "time" if round(value) == 1 else "times"
+        return f"{what} raised {value:.0f} {times} in the last 24 h (normal {normal:.0f})"
     if feature.startswith("hours_since_"):
         component = feature.split("_")[2]
         return f"{component} last replaced {value:,.0f} h ago (normal {normal:,.0f} h)"

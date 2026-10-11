@@ -17,6 +17,7 @@ Examples:
     iiot ml train                # baselines, models, explanations, scoring, ML report
     iiot ml score                # re-score every row with the @champion models
     iiot ml report               # show the latest ML report
+    iiot dashboard               # open the Streamlit dashboard (http://localhost:8501)
 
 Also available as `python -m iiot ...`.
 """
@@ -24,6 +25,8 @@ Also available as `python -m iiot ...`.
 from __future__ import annotations
 
 import argparse
+import subprocess
+import sys
 import time
 from collections.abc import Callable
 from contextlib import nullcontext
@@ -32,6 +35,7 @@ from iiot import pipeline_tracking
 from iiot.bronze import pipeline as bronze_pipeline
 from iiot.bronze import report as bronze_report
 from iiot.bronze.ingest import BronzeError
+from iiot.config import PROJECT_ROOT
 from iiot.gold import report as gold_report
 from iiot.ingestion import download, inject_issues, reference_data, validate_raw
 from iiot.model import report as model_report
@@ -123,6 +127,24 @@ def _ml_report(args: argparse.Namespace) -> None:
 
     if not show_ml_report()["passed"]:
         raise StepFailed("The latest ML report did not pass.")
+
+
+DASHBOARD_APP = PROJECT_ROOT / "dashboard" / "app.py"
+
+
+def run_dashboard(port: int) -> int:
+    """Start the Streamlit dashboard from the project folder (uses .streamlit/config.toml)."""
+    command = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(DASHBOARD_APP),
+        "--server.port",
+        str(port),
+    ]
+    logger.info("Starting the dashboard on http://localhost:%d (Ctrl+C to stop)", port)
+    return subprocess.call(command, cwd=PROJECT_ROOT)
 
 
 Step = tuple[Callable[[argparse.Namespace], None], str]
@@ -243,11 +265,16 @@ def build_parser() -> argparse.ArgumentParser:
     ml_cmds.add_parser("train", help=STEPS["ml-train"][1])
     ml_cmds.add_parser("score", help=STEPS["ml-score"][1])
     ml_cmds.add_parser("report", help=STEPS["ml-report"][1])
+
+    dashboard = groups.add_parser("dashboard", help="open the Streamlit dashboard (Phase 8)")
+    dashboard.add_argument("--port", type=int, default=8501, help="port to serve on")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.group == "dashboard":
+        return run_dashboard(args.port)
     if args.group == "run":
         names = [n for n in FULL_PIPELINE if not (args.skip_ml and n == "ml-train")]
         return _run_steps(names, args, track=not args.no_tracking)

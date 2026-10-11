@@ -53,6 +53,7 @@ def test_feature_groups(feature, group):
         ("rotate_std_3h", 30.0, 15.0, "rotation 3 h variability 30.0 vs normal 15.0 (+100%)"),
         ("pressure_trend", 4.2, 0.1, "pressure trend (3 h vs 24 h mean) +4.2 (normal +0.1)"),
         ("error5_count_24h", 2, 0, "error5 raised 2 times in the last 24 h (normal 0)"),
+        ("error1_count_24h", 1, 0, "error1 raised 1 time in the last 24 h (normal 0)"),
         ("errors_total_24h", 3, 1, "errors (all types) raised 3 times in the last 24 h (normal 1)"),
         ("hours_since_comp2_replaced", 1250, 410, "comp2 last replaced 1,250 h ago (normal 410 h)"),
     ],

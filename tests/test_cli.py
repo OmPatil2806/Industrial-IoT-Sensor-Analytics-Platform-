@@ -327,3 +327,18 @@ def test_failed_step_is_tracked_as_failed(calls):
 def test_run_without_tracking(calls):
     assert cli.main(["run", "--no-tracking"]) == 0
     assert calls.tracked == []
+
+
+def test_dashboard_command_starts_streamlit_from_the_project_folder(monkeypatch):
+    seen = {}
+
+    def fake_call(command, cwd):
+        seen.update(command=command, cwd=cwd)
+        return 0
+
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+    assert cli.main(["dashboard", "--port", "8600"]) == 0
+    assert seen["command"][1:4] == ["-m", "streamlit", "run"]
+    assert seen["command"][4] == str(cli.DASHBOARD_APP)
+    assert seen["command"][-2:] == ["--server.port", "8600"]
+    assert seen["cwd"] == cli.PROJECT_ROOT
