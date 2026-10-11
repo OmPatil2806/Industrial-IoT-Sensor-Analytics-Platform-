@@ -45,6 +45,19 @@ def _records(df: pd.DataFrame) -> list[dict]:
     return json.loads(df.to_json(orient="records", date_format="iso"))
 
 
+def base_year(path: Path | None = None) -> tuple[calc.FailureEvents, pd.Series]:
+    """Failure events of the analysis period, and planned replacement hours per component."""
+    components = data.query("SELECT * FROM dim_component ORDER BY component", path=path)
+    hours = data.query(
+        "SELECT sum(period_hours) AS h, count(DISTINCT machine_id) AS m FROM fact_machine_month",
+        path=path,
+    ).iloc[0]
+    year = calc.failure_events(
+        data.query(PERIOD_FAILURES, path=path), components, hours["h"], int(hours["m"])
+    )
+    return year, components.set_index("component")["planned_downtime_hours"]
+
+
 def build_insights(
     path: Path | None = None,
     models_dir: Path | None = None,
@@ -61,15 +74,7 @@ def build_insights(
         raise FileNotFoundError("No failure model card. Run `iiot ml train` first.")
     tested = cards["failure"]["test"]
 
-    components = data.query("SELECT * FROM dim_component ORDER BY component", path=path)
-    hours = data.query(
-        "SELECT sum(period_hours) AS h, count(DISTINCT machine_id) AS m FROM fact_machine_month",
-        path=path,
-    ).iloc[0]
-    year = calc.failure_events(
-        data.query(PERIOD_FAILURES, path=path), components, hours["h"], int(hours["m"])
-    )
-    planned_hours = components.set_index("component")["planned_downtime_hours"]
+    year, planned_hours = base_year(path)
 
     scenarios = {
         name: (s.catch_rate, s.false_alarms_per_catch) for name, s in assumptions.scenarios.items()

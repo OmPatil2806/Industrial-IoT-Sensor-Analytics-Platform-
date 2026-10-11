@@ -155,3 +155,28 @@ def test_planner_page_when_nothing_is_flagged(scored_warehouse, point_settings_a
     app.date_input[0].set_value(pd.Timestamp("2015-01-01").date()).run()
     assert not app.exception
     assert "Nothing to do" in app.success[0].value
+
+
+def test_business_case_page(built, point_settings_at):
+    path, _ = built
+    point_settings_at(path.parent)
+    app = run_app()
+    app.switch_page("views/business.py").run()
+    assert not app.exception
+    assert app.title[0].value == "💼 Business case"
+    assert app.radio[0].value == "expected"  # no model card: no "as tested"
+    assert app.slider[0].value == 70
+    metrics = {m.label: m.value for m in app.metric}
+    # one failure event (saving ₹7 lakh) in 738 h, scaled to a year, at 70% caught
+    years = 738 / 8760
+    gross, alarms = 0.7 * 700_000 / years, 0.7 * 0.5 / years * 20_000
+    assert metrics["Net saving a year"] == f"₹{(gross - alarms - 5_000_000) / 1e5:,.1f} lakh"
+
+    app.slider[0].set_value(100).run()  # catch everything
+    assert not app.exception
+    gross = 700_000 / years
+    metrics = {m.label: m.value for m in app.metric}
+    assert metrics["Net saving a year"] == f"₹{(gross - alarms / 0.7 - 5_000_000) / 1e5:,.1f} lakh"
+
+    app.radio[0].set_value("conservative").run()  # resets the sliders to that preset
+    assert app.slider[0].value == 50

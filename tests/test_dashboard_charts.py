@@ -93,3 +93,15 @@ def test_sensor_panels_one_chart_per_sensor_with_its_own_scale():
     titles = [panel["layer"][0]["title"] for panel in s["vconcat"]]
     assert titles == ["Voltage", "Rotation", "Pressure", "Vibration"]
     assert all(p["layer"][0]["encoding"]["y"]["scale"]["zero"] is False for p in s["vconcat"])
+
+
+def test_saving_curve_marks_the_chosen_rate_and_the_break_even():
+    df = pd.DataFrame({"catch_rate": [0.0, 0.5, 1.0], "net_saving_cr": [-0.5, 10.0, 20.5]})
+    spec = charts.saving_curve(df, chosen=0.5, break_even=0.0238).to_dict()
+    line, point, rule = spec["layer"]
+    assert line["mark"]["type"] == "line" and line["mark"]["color"] == charts.SERIES[0]
+    assert point["mark"]["type"] == "point" and rule["mark"]["type"] == "rule"
+    rows = next(iter(spec["datasets"].values()))
+    assert [r["mark"] for r in rows] == ["", "break-even", "chosen", ""]
+    assert all(layer["encoding"]["tooltip"] for layer in spec["layer"])
+    assert len(charts.saving_curve(df, 0.5, None).to_dict()["datasets"]) == 1

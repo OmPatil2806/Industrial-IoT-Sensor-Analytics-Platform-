@@ -19,6 +19,7 @@ MONTH_X = alt.X("month(month):O", title=None, axis=alt.Axis(labelAngle=0, grid=F
 MONTH_TOOLTIP = alt.Tooltip("yearmonth(month):T", title="Month", format="%b %Y")
 HEIGHT = 220
 LEGEND_HEIGHT = 30
+CURVE_HEIGHT = 300
 
 
 def _months(df: pd.DataFrame) -> pd.DataFrame:
@@ -216,3 +217,35 @@ def sensor_panels(sensors: pd.DataFrame, events: pd.DataFrame, domain: list) -> 
         )
         panels.append(alt.layer(line, _event_rules(events)))
     return alt.vconcat(*panels).resolve_scale(color="shared")
+
+
+def saving_curve(df: pd.DataFrame, chosen: float, break_even: float | None) -> alt.LayerChart:
+    """Net saving (crore INR) against the share of failures caught.
+
+    The chosen rate is a point; the break-even catch rate a dashed rule.
+    df: catch_rate (0..1), net_saving_cr (a straight line in catch_rate)."""
+    df = df.assign(mark="")
+    df.loc[(df["catch_rate"] - chosen).abs() < 1e-9, "mark"] = "chosen"
+    if break_even is not None:
+        # Saving is linear in the catch rate, so the break-even point lies on the line.
+        row = {"catch_rate": break_even, "net_saving_cr": 0.0, "mark": "break-even"}
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True).sort_values("catch_rate")
+    x = alt.X("catch_rate:Q", title="failures caught in time", axis=alt.Axis(format="%"))
+    y = alt.Y("net_saving_cr:Q", title="net saving per year (crore INR)")
+    tooltip = [
+        alt.Tooltip("catch_rate:Q", title="Caught", format=".1%"),
+        alt.Tooltip("net_saving_cr:Q", title="Net saving (cr INR)", format=",.2f"),
+    ]
+    base = alt.Chart(df, height=CURVE_HEIGHT)  # the page shows the title as a subheader
+    line = base.mark_line(color=SERIES[0], strokeWidth=2).encode(x=x, y=y, tooltip=tooltip)
+    point = (
+        base.transform_filter(alt.datum.mark == "chosen")
+        .mark_point(color=SERIES[0], filled=True, size=90)
+        .encode(x=x, y=y, tooltip=tooltip)
+    )
+    rule = (
+        base.transform_filter(alt.datum.mark == "break-even")
+        .mark_rule(color=MUTED, strokeDash=[4, 4], strokeWidth=1.5)
+        .encode(x=x, tooltip=[alt.Tooltip("catch_rate:Q", title="Break-even", format=".1%")])
+    )
+    return line + point + rule

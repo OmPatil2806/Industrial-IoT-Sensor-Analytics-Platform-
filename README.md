@@ -626,12 +626,14 @@ A Streamlit app that reads the warehouse only (read-only, cached, short-lived co
 | **🚨 Machines at risk** | Pick a date and time: machines ranked by failure risk with the component and the top reasons; alerts per day; the failures that followed and whether they were alerted |
 | **🔧 Machine detail** | One machine over a window: health card, predicted risk with the alert threshold, one chart per sensor with failures and maintenance marked, events |
 | **🗓️ Maintenance planner** | Prioritised to-do list (replace the predicted component / inspect sensors) with the saving per action, spare parts and work per line; download as CSV |
+| **💼 Business case** | What-if calculator: pick a scenario, move the catch rate, false alarms and costs; see net saving, downtime avoided, payback, break-even, inspections and parts per quarter, compared with the scenarios |
 | **✅ Model & data health** | Every quality report and its checks, the registered models against their baselines, and the latest `iiot run` executions from MLflow |
 
 ![Fleet overview](docs/images/dashboard_overview.png)
 ![Machines at risk](docs/images/dashboard_risk.png)
 ![Machine detail](docs/images/dashboard_machine.png)
 ![Maintenance planner](docs/images/dashboard_planner.png)
+![Business case](docs/images/dashboard_business.png)
 ![Model and data health](docs/images/dashboard_health.png)
 
 Charts follow one set of rules: one measure per chart (no second y-axis), a colour-blind-safe palette in a fixed order, and hover tooltips on every mark. Every query lives in `iiot.dashboard.data` and is unit-tested; every page is opened by a smoke test with Streamlit's test runner.

@@ -50,6 +50,14 @@ machine_events = cached(data.machine_events)
 machine_predictions = cached(data.machine_predictions)
 
 
+@st.cache_data(ttl=CACHE_SECONDS, show_spinner=False)
+def base_year():
+    """Failure events of the analysis period (for the business case)."""
+    from iiot.insights.build import base_year as _base_year
+
+    return _base_year()
+
+
 def require_warehouse() -> None:
     """Stop the page with instructions if the warehouse has not been built yet."""
     if not data.warehouse_exists():
