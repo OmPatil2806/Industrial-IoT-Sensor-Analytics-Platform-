@@ -202,11 +202,11 @@ Four views (`v_fleet_monthly`, `v_machine_health`, `v_component_reliability`, `v
 
 | Page | Audience | Shows |
 |---|---|---|
-| Executive Overview | Management | Fleet health, availability, downtime, cost, failures avoided |
-| Machine Health | Maintenance | Risk ranking of machines, RUL, active alerts |
-| Sensor Explorer | Engineers | Sensor trends with anomalies and failures highlighted |
-| Maintenance Planner | Maintenance | Prioritised service list |
-| Data Quality | Data team | Pipeline runs, rows processed, quality issues |
+| Fleet overview | Management | Availability, failures, downtime, MTBF/MTTR, cost; monthly trends; lines and components |
+| Machines at risk | Maintenance lead | Replay of any moment in the test period: machines ranked by risk, component, reasons, and what happened next |
+| Machine detail | Engineers | Predicted risk, sensor history with failures and maintenance marked, events |
+| Maintenance planner | Planner | Prioritised to-do list with savings, spare parts, work per line, CSV export |
+| Model & data health | Data / ML team | Quality checks per layer, models vs baselines, pipeline runs |
 
 ### 8️⃣ Business Insights
 - 💰 **Downtime & cost:** hours of downtime avoidable through early warnings, and estimated savings.
@@ -226,8 +226,7 @@ Four views (`v_fleet_monthly`, `v_machine_health`, `v_component_reliability`, `v
 | Data Quality | Custom validation rules |
 | Machine Learning | scikit-learn (gradient boosting, Isolation Forest, permutation importance) |
 | Experiment Tracking | MLflow (runs, metrics, charts, model registry) |
-| Dashboard | Streamlit |
-| API *(optional)* | FastAPI |
+| Dashboard | Streamlit + Altair (interactive charts) |
 | Testing & Quality | pytest, ruff |
 | Version Control | Git & GitHub |
 | IDE | VS Code |
@@ -260,8 +259,10 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 │   ├── gold/                # features, labels, ML dataset, KPIs, quality checks
 │   ├── model/               # warehouse builder, SQL scripts (sql/), model checks
 │   ├── pipeline_tracking.py # records every `iiot run` in MLflow
+│   ├── dashboard/           # dashboard data queries (tested), charts and UI helpers
 │   └── ml/                  # splits, evaluation, baselines, models, explanations, scoring, ML report
-├── dashboard/               # (Phase 8) Streamlit app
+├── .streamlit/config.toml   # dashboard theme
+├── dashboard/               # Streamlit app: app.py + views/ (one file per page)
 ├── notebooks/
 │   ├── 01_eda_raw_data.ipynb        # exploratory data analysis of the raw data
 │   ├── 02_explore_warehouse.ipynb   # browse the warehouse: tables, views, charts, SQL
@@ -287,7 +288,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 - [x] **Phase 5: Gold layer:** features, labels, ML dataset, KPIs, leakage and reconciliation checks
 - [x] **Phase 6: Data model:** DuckDB star schema (5 dimensions, 5 facts), analytical views, example queries, model checks
 - [x] **Phase 7: Machine learning:** failure prediction, component diagnosis, anomaly detection, explanations, MLflow tracking and registry, predictions in the warehouse
-- [ ] **Phase 8: Dashboard:** Streamlit multi-page app
+- [x] **Phase 8: Dashboard:** Streamlit app with 5 pages: fleet overview, machines at risk (replay), machine detail, maintenance planner, model & data health
 - [ ] **Phase 9: Business insights:** cost, downtime and maintenance recommendations
 - [ ] **Phase 10: Testing, CI & final documentation**
 
@@ -608,6 +609,32 @@ Open http://127.0.0.1:5000 (`--workers 1` avoids a Windows socket error).
 - **Models:** `iiot-failure-24h`, `iiot-component`, `iiot-anomaly`, each with its `@champion` version.
 
 Results with charts: [`notebooks/03_ml_results.ipynb`](notebooks/03_ml_results.ipynb).
+
+---
+
+## 🖥️ Dashboard (Phase 8)
+
+```bash
+iiot dashboard              # opens http://localhost:8501 (Ctrl+C to stop); --port to change it
+```
+
+A Streamlit app that reads the warehouse only (read-only, cached, short-lived connections, so a running dashboard never blocks `iiot run`). The data end on 1 Jan 2016, so the risk pages **replay the test period** (Oct–Dec 2015, which the models never saw): pick any moment and see what the models said then, and what actually happened next.
+
+| Page | What you can do |
+|---|---|
+| **📊 Fleet overview** | KPIs (availability, failures, downtime, MTBF, MTTR, cost) per plant; monthly trends; production lines and components compared; costliest machines |
+| **🚨 Machines at risk** | Pick a date and time: machines ranked by failure risk with the component and the top reasons; alerts per day; the failures that followed and whether they were alerted |
+| **🔧 Machine detail** | One machine over a window: health card, predicted risk with the alert threshold, one chart per sensor with failures and maintenance marked, events |
+| **🗓️ Maintenance planner** | Prioritised to-do list (replace the predicted component / inspect sensors) with the saving per action, spare parts and work per line; download as CSV |
+| **✅ Model & data health** | Every quality report and its checks, the registered models against their baselines, and the latest `iiot run` executions from MLflow |
+
+![Fleet overview](docs/images/dashboard_overview.png)
+![Machines at risk](docs/images/dashboard_risk.png)
+![Machine detail](docs/images/dashboard_machine.png)
+![Maintenance planner](docs/images/dashboard_planner.png)
+![Model and data health](docs/images/dashboard_health.png)
+
+Charts follow one set of rules: one measure per chart (no second y-axis), a colour-blind-safe palette in a fixed order, and hover tooltips on every mark. Every query lives in `iiot.dashboard.data` and is unit-tested; every page is opened by a smoke test with Streamlit's test runner.
 
 ---
 

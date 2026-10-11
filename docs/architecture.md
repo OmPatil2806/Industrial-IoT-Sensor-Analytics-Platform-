@@ -214,8 +214,13 @@ A DuckDB warehouse in one file, `data/warehouse/iiot.duckdb`, built by `iiot mod
 
 ### 3.7 Dashboard
 
-Streamlit app reading from the warehouse (star schema and views):
-Executive Overview · Machine Health · Sensor Explorer · Maintenance Planner · Data Quality.
+Streamlit app (`dashboard/app.py`, one file per page in `dashboard/views/`, started with `iiot dashboard`) reading the warehouse only:
+Fleet overview · Machines at risk · Machine detail · Maintenance planner · Model & data health.
+
+- **Data layer:** every query is a plain function in `iiot.dashboard.data` (no Streamlit, unit-tested). Each opens a short-lived read-only connection, so the dashboard never blocks a warehouse rebuild; `iiot.dashboard.ui` adds a 5-minute cache.
+- **Replay:** predictions are shown for the out-of-sample period only. The risk and planner pages take an "as of" time (default: the latest alert) and show what the models said then; the risk page also shows the failures that followed.
+- **Charts:** Altair (bundled with Streamlit), one measure per chart, the validated palette in fixed order, hover tooltips, Streamlit's theme for light and dark mode.
+- **Health page:** reads every layer's quality report, the model cards and the `iiot-data-pipeline` runs from MLflow.
 
 ### 3.8 Business Insights
 
@@ -231,7 +236,7 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | **Logging** | `iiot.utils.logger.get_logger(__name__)`. Writes to console and `logs/pipeline.log` (rotating, 5 MB × 3). Level is set in config. |
 | **Testing** | pytest. Tests use temporary config copies and never touch real data or logs. |
 | **Code quality** | ruff for linting and formatting (config in `pyproject.toml`). |
-| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`, `iiot silver build`, `iiot gold build`, `iiot model build`, `iiot ml train`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
+| **Command line** | `iiot run` for the full pipeline, or `iiot <group> <command>` (`iiot.cli`), e.g. `iiot data prepare`, `iiot bronze ingest`, `iiot silver build`, `iiot gold build`, `iiot model build`, `iiot ml train`, `iiot dashboard`. All steps live in one registry; each logs progress and timing, and a failed step stops the steps after it with a non-zero exit code. |
 | **Version control** | Code, documentation and the 5 source CSVs are committed. Generated data (dirty copy, reference data, Bronze/Silver/Gold), models, logs and secrets are excluded via `.gitignore`, because they can be regenerated with one command. |
 
 ---
@@ -269,5 +274,5 @@ Translates model output into decisions: avoidable downtime and cost (using the c
 | `iiot.model` | ✅ Done | DuckDB star-schema warehouse: SQL scripts, builder, analytical views, model checks |
 | `iiot.ml` | ✅ Done | Splits, evaluation, baselines, failure / component / anomaly models, explanations, scoring, ML report, MLflow tracking |
 | `iiot.pipeline_tracking` | ✅ Done | Records every `iiot run` in MLflow (steps, checks, row counts, reports) |
-| `dashboard/` | ⏳ Phase 8 | Streamlit app |
+| `iiot.dashboard` + `dashboard/` | ✅ Done | Dashboard queries, charts and UI helpers; Streamlit app with 5 pages |
 | `reports/` | ⏳ Phase 9 | Business insights report |

@@ -13,6 +13,7 @@ MONTHLY = pd.DataFrame(
         "availability": [0.98, 0.99],
         "failure_cost": [3e6, 2e6],
         "maintenance_cost": [1e6, 1e6],
+        "total_cost": [4e6, 3e6],
     }
 )
 

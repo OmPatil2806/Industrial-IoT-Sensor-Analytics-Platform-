@@ -18,6 +18,7 @@ MUTED = "#898781"
 MONTH_X = alt.X("month(month):O", title=None, axis=alt.Axis(labelAngle=0, grid=False))
 MONTH_TOOLTIP = alt.Tooltip("yearmonth(month):T", title="Month", format="%b %Y")
 HEIGHT = 220
+LEGEND_HEIGHT = 30
 
 
 def _months(df: pd.DataFrame) -> pd.DataFrame:
@@ -63,7 +64,9 @@ def monthly_cost(df: pd.DataFrame) -> alt.Chart:
     long["part"] = long["part"].map(parts)
     long["lakh"] = long["cost"] / 1e5
     return (
-        alt.Chart(long, title="Cost per month", height=HEIGHT)
+        # Streamlit fits legend + plot into the height: add the legend's height so the plot
+        # area matches the other monthly charts.
+        alt.Chart(long, title="Cost per month", height=HEIGHT + LEGEND_HEIGHT)
         .mark_bar()
         .encode(
             x=MONTH_X,
