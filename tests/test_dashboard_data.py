@@ -103,6 +103,19 @@ def test_risk_as_of_uses_the_latest_scores_at_or_before_the_time(scored):
     assert data.prediction_times(scored).tolist() == [T0 - pd.Timedelta(hours=3), T0]
 
 
+def test_alert_history_and_what_happened_next(scored):
+    days = data.daily_alerts(scored)
+    assert days[["machines_alerted", "machines_flagged"]].values.tolist() == [[0, 0], [1, 2]]
+    assert data.latest_alert_time(scored) == T0
+    failures = data.failures_between(pd.Timestamp("2015-01-04"), pd.Timestamp("2015-01-06"), scored)
+    assert failures[["machine_id", "components"]].values.tolist() == [[1, "comp1+comp2"]]
+    assert data.failures_between(T0, T0 + pd.Timedelta(hours=24), scored).empty
+
+
+def test_latest_alert_time_without_alerts(warehouse):
+    assert data.latest_alert_time(warehouse) is None
+
+
 def test_maintenance_plan_puts_alerts_first_with_their_saving(scored):
     plan = data.maintenance_plan(T0, scored)
     assert list(plan["priority"]) == [1, 2]

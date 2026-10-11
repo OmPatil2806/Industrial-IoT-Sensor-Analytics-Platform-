@@ -18,6 +18,7 @@ st.set_page_config(
 
 pages = [
     st.Page(VIEWS / "overview.py", title="Fleet overview", icon="📊", default=True),
+    st.Page(VIEWS / "risk.py", title="Machines at risk", icon="🚨"),
     st.Page(VIEWS / "home.py", title="Platform status", icon="✅"),
 ]
 st.navigation(pages).run()

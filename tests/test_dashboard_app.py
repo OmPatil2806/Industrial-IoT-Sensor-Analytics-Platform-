@@ -73,3 +73,38 @@ def test_home_page_without_a_warehouse_explains_what_to_run(tmp_path, point_sett
     app = run_app()
     assert not app.exception
     assert "iiot run" in app.warning[0].value
+
+
+@pytest.fixture
+def scored_warehouse(silver, tmp_path):
+    """The conftest warehouse plus predictions (machine 1 alerted for comp2)."""
+    from iiot.model.warehouse import build_warehouse
+    from tests.test_dashboard_data import write_predictions
+
+    write_predictions(silver.parent / "gold")
+    path = tmp_path / "scored" / "iiot.duckdb"
+    build_warehouse(silver, path, gold_dir=silver.parent / "gold")
+    return path
+
+
+def test_risk_page_replays_the_latest_alert(scored_warehouse, point_settings_at):
+    point_settings_at(scored_warehouse.parent)
+    app = run_app()
+    app.switch_page("views/risk.py").run()
+    assert not app.exception
+    assert app.title[0].value == "🚨 Machines at risk"
+    metrics = {m.label: m.value for m in app.metric}
+    assert metrics["Failure alerts"] == "1"
+    assert metrics["Unusual sensors"] == "2"
+    assert metrics["Component most at risk"] == "comp2"
+    assert metrics["Saving at stake"] == "₹3.8 lakh"
+    assert app.selectbox[0].value == "00:00"  # the latest alert time: 2 Jan 00:00
+
+
+def test_risk_page_without_predictions_explains_what_to_run(built, point_settings_at):
+    path, _ = built
+    point_settings_at(path.parent)
+    app = run_app()
+    app.switch_page("views/risk.py").run()
+    assert not app.exception
+    assert "iiot ml train" in app.warning[0].value

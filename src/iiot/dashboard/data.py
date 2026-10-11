@@ -187,6 +187,48 @@ def prediction_times(path: Path | None = None) -> pd.Series:
     )["timestamp"]
 
 
+def daily_alerts(path: Path | None = None) -> pd.DataFrame:
+    """Per out-of-sample day: machines with a failure alert and machines with an anomaly flag."""
+    return query(
+        """
+        SELECT CAST(timestamp AS DATE) AS day,
+               count(DISTINCT machine_id) FILTER (WHERE alert)        AS machines_alerted,
+               count(DISTINCT machine_id) FILTER (WHERE anomaly_flag) AS machines_flagged
+        FROM fact_prediction
+        WHERE out_of_sample
+        GROUP BY day
+        ORDER BY day
+        """,
+        path=path,
+    )
+
+
+def latest_alert_time(path: Path | None = None) -> pd.Timestamp | None:
+    """The last out-of-sample scoring time with at least one alert (a useful default)."""
+    value = query(
+        "SELECT max(timestamp) AS t FROM fact_prediction WHERE out_of_sample AND alert",
+        path=path,
+    )["t"].iloc[0]
+    return None if pd.isna(value) else pd.Timestamp(value)
+
+
+def failures_between(
+    start: pd.Timestamp, end: pd.Timestamp, path: Path | None = None
+) -> pd.DataFrame:
+    """Failure events (machine, time, components) with start < time <= end."""
+    return query(
+        """
+        SELECT machine_id, timestamp, string_agg(component, '+' ORDER BY component) AS components
+        FROM fact_failure
+        WHERE timestamp > ? AND timestamp <= ?
+        GROUP BY machine_id, timestamp
+        ORDER BY timestamp, machine_id
+        """,
+        [pd.Timestamp(start).to_pydatetime(), pd.Timestamp(end).to_pydatetime()],
+        path=path,
+    )
+
+
 def risk_as_of(as_of: pd.Timestamp, path: Path | None = None) -> pd.DataFrame:
     """Each machine's latest out-of-sample prediction at or before `as_of`, riskiest first."""
     return query(
