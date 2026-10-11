@@ -83,7 +83,7 @@ def calls(monkeypatch):
 
         return step
 
-    for name in ("ml-train", "ml-score", "ml-report"):
+    for name in ("ml-train", "ml-score", "ml-report", "insights-build", "insights-report"):
         monkeypatch.setitem(cli.STEPS, name, (fake_ml(name), cli.STEPS[name][1]))
 
     @contextmanager
@@ -169,6 +169,7 @@ def test_run_executes_the_full_pipeline_in_order(calls):
         "gold-build",
         "model-build",
         "ml-train",
+        "insights-build",
     ]
 
 
@@ -301,12 +302,23 @@ def test_ml_commands(calls, command, expected):
 def test_failed_ml_checks_fail_the_full_run(calls):
     calls.ml_passed = False
     assert cli.main(["run"]) == 1
-    assert calls[-1] == "ml-train"
+    assert calls[-1] == "ml-train"  # insights are not built without a passing model
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [(["build"], ["insights-build"]), (["report"], ["insights-report"])],
+)
+def test_insights_commands(calls, command, expected):
+    assert cli.main(["insights", *command]) == 0
+    assert calls == expected
+    assert calls.tracked == []
 
 
 def test_run_skip_ml_stops_after_the_warehouse(calls):
     assert cli.main(["run", "--skip-ml"]) == 0
     assert calls[-1] == "model-build"
+    assert "insights-build" not in calls
 
 
 def test_run_is_tracked_with_every_step_result(calls):

@@ -5,7 +5,7 @@ lines, machines, predictions) and the failure model card (test results, used for
 the "as tested" scenario). Assumptions come from config/settings.yaml (`insights`,
 `ml.false_alarm_cost`, `business`).
 
-Usage:
+Usage (or `iiot insights build`, which also writes the report):
     from iiot.insights.build import build_insights
     insights = build_insights()
 """
@@ -165,6 +165,17 @@ def build_insights(
     return insights
 
 
+def show_insights(reports_dir: Path | None = None) -> dict:
+    """Log the summary of the latest insights.json and return it."""
+    path = Path(reports_dir or get_settings().paths.reports) / INSIGHTS_FILE_NAME
+    if not path.exists():
+        raise FileNotFoundError(f"{path} not found. Run `iiot insights build` first.")
+    insights = json.loads(path.read_text(encoding="utf-8"))
+    logger.info("Insights generated at %s", insights["generated_at"])
+    _log_summary(insights, path)
+    return insights
+
+
 def _log_summary(insights: dict, out: Path) -> None:
     for s in insights["scenarios"]:
         logger.info(
@@ -176,4 +187,8 @@ def _log_summary(insights: dict, out: Path) -> None:
             s["downtime_avoided_h"],
             "never" if s["payback_months"] is None else f"{s['payback_months']:.1f} months",
         )
-    logger.info("Insights written to %s", out)
+    rate = insights["break_even_catch_rate"]
+    logger.info(
+        "Break-even: catch %s of failures", "never" if rate is None else f"{100 * rate:.1f}%"
+    )
+    logger.info("Insights: %s", out)

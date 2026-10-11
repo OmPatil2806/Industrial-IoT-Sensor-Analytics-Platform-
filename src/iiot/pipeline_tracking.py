@@ -38,14 +38,18 @@ def report_files() -> dict[str, Path]:
         "gold": paths.gold / "gold_report.json",
         "warehouse": paths.warehouse / "model_report.json",
         "ml": paths.models / "ml_report.json",
+        "insights": paths.reports / "insights.json",
     }
 
 
 def report_metrics(name: str, report: dict) -> dict[str, float]:
-    """Pass/fail and row counts from one quality report."""
+    """Pass/fail and row counts from one quality report (net savings from the insights)."""
     metrics = {}
     if "passed" in report:
         metrics[f"{name}_report_passed"] = float(bool(report["passed"]))
+    for scenario in report.get("scenarios") or []:  # insights.json: annual net saving
+        key = scenario["name"].replace(" ", "_")
+        metrics[f"net_saving_{key}"] = float(scenario["net_saving"])
     for table, value in (report.get("tables") or {}).items():
         rows = value.get("rows") if isinstance(value, dict) else value
         if isinstance(rows, int | float):

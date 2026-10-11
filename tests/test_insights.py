@@ -9,7 +9,7 @@ import pytest
 
 from iiot.insights import calculations as calc
 from iiot.insights import report
-from iiot.insights.build import AS_TESTED, INSIGHTS_FILE_NAME, build_insights
+from iiot.insights.build import AS_TESTED, INSIGHTS_FILE_NAME, build_insights, show_insights
 from iiot.model.warehouse import build_warehouse
 from tests.test_dashboard_data import write_predictions
 
@@ -323,3 +323,11 @@ def test_write_report(scored, models_dir, tmp_path):
 def test_write_report_needs_insights(tmp_path):
     with pytest.raises(FileNotFoundError, match="insights"):
         report.write_report(reports_dir=tmp_path)
+
+
+def test_show_insights(scored, models_dir, tmp_path):
+    reports = tmp_path / "reports"
+    with pytest.raises(FileNotFoundError, match="iiot insights build"):
+        show_insights(reports)
+    built = build_insights(scored, models_dir=models_dir, reports_dir=reports)
+    assert show_insights(reports) == json.loads(json.dumps(built, default=str))

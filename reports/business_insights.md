@@ -136,7 +136,7 @@ The inputs most often named in the reasons for out-of-sample alerts, per predict
 |---|---|
 | comp1 | error1 (93%); voltage (90%) |
 | comp2 | rotation (92%); error3 (42%) |
-| comp3 | pressure (97%); error4 (97%) |
+| comp3 | error4 (97%); pressure (97%) |
 | comp4 | error5 (96%); vibration (96%) |
 
 ## What it means for operations (expected case)

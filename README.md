@@ -260,6 +260,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 │   ├── model/               # warehouse builder, SQL scripts (sql/), model checks
 │   ├── pipeline_tracking.py # records every `iiot run` in MLflow
 │   ├── dashboard/           # dashboard data queries (tested), charts and UI helpers
+│   ├── insights/            # business case calculations, report and its charts
 │   └── ml/                  # splits, evaluation, baselines, models, explanations, scoring, ML report
 ├── .streamlit/config.toml   # dashboard theme
 ├── dashboard/               # Streamlit app: app.py + views/ (one file per page)
@@ -267,7 +268,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 │   ├── 01_eda_raw_data.ipynb        # exploratory data analysis of the raw data
 │   ├── 02_explore_warehouse.ipynb   # browse the warehouse: tables, views, charts, SQL
 │   └── 03_ml_results.ipynb          # ML results on the test period, with baselines and costs
-├── reports/                 # (Phase 9) business insights
+├── reports/                 # business report, its charts and insights.json (committed)
 ├── models/                  # trained models (not committed)
 ├── tests/                   # pytest test suite
 └── docs/
@@ -289,7 +290,7 @@ Industrial-IoT-Sensor-Analytics-Platform-/
 - [x] **Phase 6: Data model:** DuckDB star schema (5 dimensions, 5 facts), analytical views, example queries, model checks
 - [x] **Phase 7: Machine learning:** failure prediction, component diagnosis, anomaly detection, explanations, MLflow tracking and registry, predictions in the warehouse
 - [x] **Phase 8: Dashboard:** Streamlit app with 5 pages: fleet overview, machines at risk (replay), machine detail, maintenance planner, model & data health
-- [ ] **Phase 9: Business insights:** cost, downtime and maintenance recommendations (in progress: [business report](reports/business_insights.md))
+- [x] **Phase 9: Business insights:** business case with scenarios, break-even and sensitivity, where to focus, warning signatures, a [business report](reports/business_insights.md) and a what-if dashboard page
 - [ ] **Phase 10: Testing, CI & final documentation**
 
 ---
@@ -372,7 +373,7 @@ Generated files are reproducible (fixed seeds in `config/settings.yaml`) and are
 ```bash
 iiot run
 ```
-Runs every step, in order: data preparation (4 steps), Bronze ingest and Bronze report, the Silver build, the Gold build, the warehouse build and the ML phase (train, explain, score, check). On the real data the whole run takes about 4 minutes (35 seconds with `--skip-ml`). Each run is recorded in MLflow (experiment `iiot-data-pipeline`; `--no-tracking` to skip). It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
+Runs every step, in order: data preparation (4 steps), Bronze ingest and Bronze report, the Silver build, the Gold build, the warehouse build, the ML phase (train, explain, score, check) and the business insights (report and charts). On the real data the whole run takes about 4 minutes (35 seconds with `--skip-ml`, which also skips the insights). Each run is recorded in MLflow (experiment `iiot-data-pipeline`; `--no-tracking` to skip). It stops at the first failure. Use `--force-download` and/or `--force-bronze` to redo those steps even when nothing changed.
 
 ### Explore the data
 Open [`notebooks/01_eda_raw_data.ipynb`](notebooks/01_eda_raw_data.ipynb) in VS Code or Jupyter, select the `.venv` kernel and run all cells.
@@ -637,6 +638,31 @@ A Streamlit app that reads the warehouse only (read-only, cached, short-lived co
 ![Model and data health](docs/images/dashboard_health.png)
 
 Charts follow one set of rules: one measure per chart (no second y-axis), a colour-blind-safe palette in a fixed order, and hover tooltips on every mark. Every query lives in `iiot.dashboard.data` and is unit-tested; every page is opened by a smoke test with Streamlit's test runner.
+
+---
+
+## 💡 Business Insights (Phase 9)
+
+```bash
+iiot insights build    # business case -> reports/insights.json, business_insights.md and charts
+iiot insights report   # show the latest business case summary
+```
+
+Turns the warehouse and the model's test results into a business case (it is also the last step of `iiot run`). A failure event caught 24 hours ahead becomes a planned replacement: the saving is the unplanned failure cost minus the planned maintenance cost, and the downtime avoided is the longest repair minus the longest planned replacement. Every false alarm costs one inspection. All assumptions are in `config/settings.yaml` (`insights`, `ml.false_alarm_cost`, `business`).
+
+📄 **Read the report: [reports/business_insights.md](reports/business_insights.md)** (executive summary, recommendations, scenarios, sensitivity, where to focus, warning signatures, operations impact, a 3-month pilot plan, assumptions and limits).
+
+| Scenario (per year) | Failures caught | False alarms per catch | Net saving | Downtime avoided | Payback |
+|---|---|---|---|---|---|
+| Conservative | 50% | 1.0 | ₹12.57 cr | 2,432 h | under 1 month |
+| Expected | 70% | 0.5 | **₹18.30 cr** | 3,404 h | under 1 month |
+| As tested (model on unseen months) | 97% | 0.01 | ₹26.27 cr | 4,721 h | under 1 month |
+
+- **Break-even:** the programme (₹50 lakh a year) pays for itself once it catches **1.9%** of failures.
+- **Where to focus:** CHENNAI-L1 has the most failures per machine (8.85) and 25% of the failure cost; machines aged 15+ years fail 9.0 times a year against 5.5 for those under 10 years; the 10 costliest machines cause 18.5% of the failure cost.
+- **Warning signatures** (named in the alert reasons): comp1 error1 + voltage, comp2 rotation + error3, comp3 pressure + error4, comp4 error5 + vibration.
+
+The **💼 Business case** dashboard page recalculates all of this live with your own catch rate, false alarms and costs. Each `iiot run` also logs the net saving of every scenario to MLflow. The data are synthetic, so plan with the expected case, not the tested one.
 
 ---
 

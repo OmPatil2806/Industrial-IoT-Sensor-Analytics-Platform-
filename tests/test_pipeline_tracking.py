@@ -20,6 +20,19 @@ def test_report_metrics_read_pass_flags_and_row_counts():
     }
 
 
+def test_report_metrics_read_net_savings_from_the_insights():
+    insights = {
+        "scenarios": [
+            {"name": "expected", "net_saving": 5.0},
+            {"name": "as tested", "net_saving": 7},
+        ]
+    }
+    assert report_metrics("insights", insights) == {
+        "net_saving_expected": 5.0,
+        "net_saving_as_tested": 7.0,
+    }
+
+
 def test_pipeline_run_is_logged_with_steps_and_reports(tmp_path, monkeypatch):
     report = tmp_path / "gold_report.json"
     report.write_text(json.dumps({"passed": True, "tables": {"labels": {"rows": 5}}}))

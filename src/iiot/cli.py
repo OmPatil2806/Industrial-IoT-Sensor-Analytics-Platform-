@@ -2,7 +2,8 @@
 
 Examples:
     iiot run                     # full pipeline: data -> Bronze -> Silver -> Gold -> warehouse
-                                 #   -> ML (tracked in MLflow; --skip-ml, --no-tracking)
+                                 #   -> ML -> insights (tracked in MLflow; --skip-ml,
+                                 #   --no-tracking)
     iiot data prepare            # download -> validate -> inject issues -> reference data
     iiot data download --force   # re-download the Kaggle dataset
     iiot data validate           # run the raw data contract only
@@ -17,6 +18,8 @@ Examples:
     iiot ml train                # baselines, models, explanations, scoring, ML report
     iiot ml score                # re-score every row with the @champion models
     iiot ml report               # show the latest ML report
+    iiot insights build          # business case + reports/business_insights.md and charts
+    iiot insights report         # show the latest business case summary
     iiot dashboard               # open the Streamlit dashboard (http://localhost:8501)
 
 Also available as `python -m iiot ...`.
@@ -129,6 +132,19 @@ def _ml_report(args: argparse.Namespace) -> None:
         raise StepFailed("The latest ML report did not pass.")
 
 
+def _insights_build(args: argparse.Namespace) -> None:
+    from iiot.insights.build import build_insights
+    from iiot.insights.report import write_report
+
+    write_report(build_insights())
+
+
+def _insights_report(args: argparse.Namespace) -> None:
+    from iiot.insights.build import show_insights
+
+    show_insights()
+
+
 DASHBOARD_APP = PROJECT_ROOT / "dashboard" / "app.py"
 
 
@@ -166,12 +182,16 @@ STEPS: dict[str, Step] = {
     "ml-train": (_ml_train, "train, explain, score and check the ML models (MLflow)"),
     "ml-score": (_ml_score, "score every row with the @champion models and check them"),
     "ml-report": (_ml_report, "show the latest ML report"),
+    "insights-build": (
+        _insights_build,
+        "compute the business case and write reports/business_insights.md",
+    ),
+    "insights-report": (_insights_report, "show the latest business case summary"),
 }
 DATA_STEPS = ["download", "validate", "inject", "reference"]
 BRONZE_STEPS = ["bronze-ingest", "bronze-report"]
-FULL_PIPELINE = (
-    DATA_STEPS + BRONZE_STEPS + ["silver-build", "gold-build", "model-build", "ml-train"]
-)
+ML_STEPS = ["ml-train", "insights-build"]  # insights need the trained model
+FULL_PIPELINE = DATA_STEPS + BRONZE_STEPS + ["silver-build", "gold-build", "model-build"] + ML_STEPS
 
 
 def _run_steps(names: list[str], args: argparse.Namespace, track: bool = False) -> int:
@@ -216,9 +236,13 @@ def build_parser() -> argparse.ArgumentParser:
     groups = parser.add_subparsers(dest="group", required=True)
 
     run = groups.add_parser(
-        "run", help="run the full pipeline (data -> Bronze -> Silver -> Gold -> warehouse -> ML)"
+        "run",
+        help="run the full pipeline (data -> Bronze -> Silver -> Gold -> warehouse -> ML "
+        "-> insights)",
     )
-    run.add_argument("--skip-ml", action="store_true", help="stop after the warehouse")
+    run.add_argument(
+        "--skip-ml", action="store_true", help="stop after the warehouse (no ML, no insights)"
+    )
     run.add_argument("--no-tracking", action="store_true", help="do not record this run in MLflow")
     run.add_argument("--force-download", action="store_true", help="re-download the dataset")
     run.add_argument("--force-bronze", action="store_true", help="reload every Bronze table")
@@ -266,6 +290,11 @@ def build_parser() -> argparse.ArgumentParser:
     ml_cmds.add_parser("score", help=STEPS["ml-score"][1])
     ml_cmds.add_parser("report", help=STEPS["ml-report"][1])
 
+    insights = groups.add_parser("insights", help="business case and report (Phase 9)")
+    insights_cmds = insights.add_subparsers(dest="command", required=True)
+    insights_cmds.add_parser("build", help=STEPS["insights-build"][1])
+    insights_cmds.add_parser("report", help=STEPS["insights-report"][1])
+
     dashboard = groups.add_parser("dashboard", help="open the Streamlit dashboard (Phase 8)")
     dashboard.add_argument("--port", type=int, default=8501, help="port to serve on")
     return parser
@@ -276,11 +305,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.group == "dashboard":
         return run_dashboard(args.port)
     if args.group == "run":
-        names = [n for n in FULL_PIPELINE if not (args.skip_ml and n == "ml-train")]
+        names = [n for n in FULL_PIPELINE if not (args.skip_ml and n in ML_STEPS)]
         return _run_steps(names, args, track=not args.no_tracking)
     elif args.group == "data":
         names = DATA_STEPS if args.command == "prepare" else [args.command]
-    else:  # bronze, silver, gold, model or ml
+    else:  # bronze, silver, gold, model, ml or insights
         names = [f"{args.group}-{args.command}"]
     return _run_steps(names, args)
 

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-11T15:11:34.400600+00:00",
+  "generated_at": "2026-10-11T16:35:05.701094+00:00",
   "baseline": {
     "failures": 719,
     "planned_maintenances": 1733,
@@ -438,12 +438,12 @@
     },
     {
       "component": "comp3",
-      "signal": "pressure",
+      "signal": "error4",
       "share_of_alerts": 0.9705882353
     },
     {
       "component": "comp3",
-      "signal": "error4",
+      "signal": "pressure",
       "share_of_alerts": 0.9705882353
     },
     {
