@@ -1,7 +1,5 @@
 """Machines at risk: what the models said at a chosen time, and what happened next."""
 
-import datetime as dt
-
 import pandas as pd
 import streamlit as st
 
@@ -14,19 +12,7 @@ st.caption(
     "Pick a moment to see which machines the models flagged then, and why."
 )
 
-# ---- "as of" picker: a date and one of the 3-hourly scoring times
-times = ui.prediction_times()
-default = ui.latest_alert_time() or times.max()
-c1, c2 = st.columns([2, 1])
-day = c1.date_input(
-    "As of date",
-    value=default.date(),
-    min_value=times.min().date(),
-    max_value=times.max().date(),
-)
-hours = [f"{h:02d}:00" for h in range(0, 24, 3)]
-hour = c2.selectbox("Time", hours, index=hours.index(f"{default.hour // 3 * 3:02d}:00"))
-as_of = pd.Timestamp(dt.datetime.combine(day, dt.time(int(hour[:2]))))
+as_of = ui.as_of_picker()
 
 risk = ui.risk_as_of(as_of)
 if risk.empty:

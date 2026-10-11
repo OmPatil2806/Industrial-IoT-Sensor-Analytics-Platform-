@@ -20,6 +20,7 @@ pages = [
     st.Page(VIEWS / "overview.py", title="Fleet overview", icon="📊", default=True),
     st.Page(VIEWS / "risk.py", title="Machines at risk", icon="🚨"),
     st.Page(VIEWS / "machine.py", title="Machine detail", icon="🔧"),
+    st.Page(VIEWS / "planner.py", title="Maintenance planner", icon="🗓️"),
     st.Page(VIEWS / "home.py", title="Platform status", icon="✅"),
 ]
 st.navigation(pages).run()

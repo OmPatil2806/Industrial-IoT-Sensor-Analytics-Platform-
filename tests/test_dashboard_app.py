@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
@@ -124,3 +125,26 @@ def test_machine_detail_page(scored_warehouse, point_settings_at, tmp_path):
     metrics = {m.label: m.value for m in app.metric}
     assert metrics["Failures (2015)"] == "1"
     assert metrics["Last failure"] == "05 Jan"
+
+
+def test_planner_page_lists_actions_and_offers_a_csv(scored_warehouse, point_settings_at):
+    point_settings_at(scored_warehouse.parent)
+    app = run_app()
+    app.switch_page("views/planner.py").run()
+    assert not app.exception
+    assert app.title[0].value == "🗓️ Maintenance planner"
+    metrics = {m.label: m.value for m in app.metric}
+    assert (metrics["Replacements"], metrics["Inspections"]) == ("1", "1")
+    assert metrics["Saving if done in time"] == "₹3.8 lakh"
+    assert metrics["Lines involved"] == "2"
+    assert len(app.get("download_button")) == 1
+
+
+def test_planner_page_when_nothing_is_flagged(scored_warehouse, point_settings_at):
+    point_settings_at(scored_warehouse.parent)
+    app = run_app()
+    app.switch_page("views/planner.py").run()
+    app.selectbox[0].set_value("21:00")  # 1 Jan 21:00: before the alert
+    app.date_input[0].set_value(pd.Timestamp("2015-01-01").date()).run()
+    assert not app.exception
+    assert "Nothing to do" in app.success[0].value

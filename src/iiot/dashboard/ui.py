@@ -6,6 +6,8 @@ pages is instant while a rebuilt warehouse still shows up within minutes.
 
 from __future__ import annotations
 
+import datetime as dt
+
 import pandas as pd
 import streamlit as st
 
@@ -84,3 +86,19 @@ def pct(value: float, digits: int = 1) -> str:
 
 def hours(value: float, digits: int = 0) -> str:
     return "-" if value is None or pd.isna(value) else f"{value:,.{digits}f} h"
+
+
+def as_of_picker() -> pd.Timestamp:
+    """Date + 3-hourly time inside the out-of-sample period (default: the latest alert)."""
+    times = prediction_times()
+    default = latest_alert_time() or times.max()
+    c1, c2 = st.columns([2, 1])
+    day = c1.date_input(
+        "As of date",
+        value=default.date(),
+        min_value=times.min().date(),
+        max_value=times.max().date(),
+    )
+    hours = [f"{h:02d}:00" for h in range(0, 24, 3)]
+    hour = c2.selectbox("Time", hours, index=hours.index(f"{default.hour // 3 * 3:02d}:00"))
+    return pd.Timestamp(dt.datetime.combine(day, dt.time(int(hour[:2]))))
